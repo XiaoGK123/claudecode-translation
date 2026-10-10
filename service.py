@@ -17,6 +17,7 @@ from pathlib import Path
 from install import update
 from balance import balance_label
 from translate_hook import configuration
+import hotkey
 
 ROOT = Path(__file__).resolve().parent
 RUNTIME = ROOT / ".runtime"
@@ -85,6 +86,7 @@ def run():
         running = True
         listener = None
         stop_client = None
+        hotkey_process = None
         stopped = threading.Event()
         results = queue.SimpleQueue()
         terminal_line = False
@@ -118,6 +120,12 @@ def run():
             if not running:
                 return 0
             prefix = f"服务运行中 | Hook 已安装 | 模型 {config['model']}"
+            if config.get("input_translation_enabled", False):
+                try:
+                    hotkey_process = hotkey.launch()
+                    prefix += " | Option+A 已启用"
+                except Exception as error:
+                    prefix += f" | Option+A 未启用：{error}"
             terminal_line = sys.stdout.isatty()
 
             def render(label, initial=False):
@@ -132,11 +140,16 @@ def run():
             threading.Thread(target=refresh_balance, args=(stopped, results, interval),
                              daemon=True).start()
             while running:
+                if hotkey_process is not None and hotkey_process.poll() is not None:
+                    prefix = prefix.replace("Option+A 已启用", "Option+A 已停止，请重启服务")
+                    hotkey_process = None
+                    render(balance)
                 try:
                     refreshed = results.get_nowait()
                 except queue.Empty:
                     pass
                 else:
+                    balance = refreshed
                     render(refreshed)
                 try:
                     client, _ = listener.accept()
@@ -157,6 +170,7 @@ def run():
                         client.close()
         finally:
             stopped.set()
+            hotkey.stop(hotkey_process)
             if terminal_line:
                 print(flush=True)
             cleanup_error = None

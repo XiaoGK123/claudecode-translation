@@ -21,13 +21,13 @@ class ServiceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="translation-")
         self.root = Path(self.temp.name)
-        for name in ("service.py", "balance.py", "translate_hook.py", "install.py", "config.example.json"):
+        for name in ("service.py", "hotkey.py", "balance.py", "translate_hook.py", "install.py", "config.example.json"):
             shutil.copy2(ROOT / name, self.root)
         self.settings = self.root / "claude-settings.json"
         self.original = {"permissions": {"allow": ["Read"]}, "hooks": {
             "Stop": [{"hooks": [{"type": "command", "command": "echo other"}]}]}}
         self.settings.write_text(json.dumps(self.original))
-        (self.root / "config.json").write_text(json.dumps({"settings_file": str(self.settings)}))
+        (self.root / "config.json").write_text(json.dumps({"settings_file": str(self.settings), "input_translation_enabled": False}))
 
     def command(self, action):
         return subprocess.run([sys.executable, str(self.root / "service.py"), action],
@@ -111,7 +111,7 @@ class ServiceTests(unittest.TestCase):
     def test_foreground_single_status_line_and_exit_cleanup(self):
         for sig in (signal.SIGINT, signal.SIGHUP):
             with self.subTest(signal=sig):
-                config = {"settings_file": str(self.settings)}
+                config = {"settings_file": str(self.settings), "input_translation_enabled": False}
                 (self.root / "config.json").write_text(json.dumps(config))
                 output = self.root / "foreground.log"
                 with output.open("w") as log:
@@ -160,6 +160,7 @@ class ServiceTests(unittest.TestCase):
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         config = {"settings_file": str(self.settings), "api_key": "service-test-key",
+                  "input_translation_enabled": False,
                   "base_url": f"http://127.0.0.1:{server.server_port}",
                   "balance_refresh_seconds": 0.2, "balance_timeout_seconds": 0.5}
         (self.root / "config.json").write_text(json.dumps(config))

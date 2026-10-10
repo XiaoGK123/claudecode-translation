@@ -57,6 +57,35 @@ python3 service.py
 如果正在运行的 Claude 会话未识别新 Hook，请重新启动该会话。
 本 Hook 不强制 Claude 用英文回复，需要英文记录时在提示词或 CLAUDE.md 中指定。
 
+## 全局输入翻译：Option+A
+
+服务开启后，固定快捷键 **Option+A（⌥A）**：
+
+1. 输入框有文本选区：剪切该选区，翻译成英文，填回原位置。
+2. 没有选区：执行 Cmd+A 全选当前输入框，再剪切、翻译、填回。
+3. 不自动提交消息。翻译失败时尝试回填中文原文；若焦点已改变或你有其他操作，不会粘贴到其他输入框，可从剪贴板恢复或在原输入框撤销剪切。
+
+输入翻译采用标准复制/全选/剪切/粘贴快捷键，不限制具体应用，不再要求应用公开“可编辑”属性。优先利用辅助功能读取选区；如果应用未公开选区，则通过 Cmd+C 后剪贴板是否更新判断，有内容时处理选区，否则 Cmd+A 后复制全部内容。密码框及系统安全输入状态不会读取或剪切。请先将光标放入目标输入框；不能保证 Cmd+A 在所有应用里都代表输入框全选。部分编辑器在无选区时会复制当前行，在不能读取选区的情况下无法完全区分，需要手动验证应用行为。
+
+首次运行需安装 Xcode Command Line Tools（已有 swiftc 可跳过）。程序把原生助手编译到 .runtime/input-hotkey。缺少辅助功能权限时，程序会通过 AXIsProcessTrustedWithOptions 的系统提示选项主动请求权限，由 macOS 显示授权提示。请在系统提示中打开设置，允许启动服务的终端及该原生助手；若提示输入监控权限也需要允许，然后重启服务。系统可能不重复弹出已拒绝的请求，此时按提示手动进入系统设置。权限未就绪会显示 Option+A 未启用；原有回复翻译 Hook 仍可工作。
+
+- `input_translation_enabled`：true 启用，false 关闭；修改后重启服务。
+- 固定 Option+A，不需要配置快捷键名称。该键在服务运行期间用于输入翻译。
+- 运行过程中不记录键入内容；只在按下 Option+A 时读取当前可编辑选区。原生助手错误写入 .runtime/hotkey.log，不记录原文或 API Key。
+- 退出服务会注销快捷键。翻译期间切换应用/窗口、点击鼠标、滚动或继续键入时取消自动回填；自己生成的复制/剪切/粘贴事件不会被误判为用户操作。原文可通过剪贴板或撤销剪切恢复。
+- 剪贴板会在操作期间临时承载原文/译文，正常完成后恢复操作前的剪贴板；用户操作期间复制了其他内容时，保留新剪贴板。
+
+### 不翻译的中文
+
+翻译提示词要求成对符号包裹的中文逐字保留（符号也保留）：
+
+- 引号：双引号、单引号、中文弯引号、“「」”、“『』”。
+- 破折号：—中文—、——中文——、–中文–、--中文--、-中文-。
+- 括号等：（中文）、(中文)、【中文】、[中文]、《中文》、〈中文〉、{中文}、反引号包裹的中文。
+
+例：`请点击“确认”按钮，然后打开—设置页面—` → `Click the “确认” button, then open —设置页面—`（实际英文措辞由模型决定）。
+程序直接把完整原文发送给 AI，仅通过提示词要求保留这些中文，不替换占位符、不进行局部拆分或还原，也不按中文是否残留拒绝译文。提示词明确要求只翻译外围文字，嵌套或多行区域同样保留。没有配对闭合的符号不构成保留区域。此规则仅用于输入的中译英，不影响原有英文回复的中文显示。
+
 ## 手动安装（可选）
 
 不使用服务时仍可手动安装/卸载；不要把手动管理和服务管理混在同一设置文件里。
@@ -77,7 +106,7 @@ python3 install.py --settings /绝对路径/你的项目/.claude/settings.local.
   "api_format": "chat_completions",
   "thinking_type": "disabled",
   "model": "deepseek-flash",
-  "timeout_seconds": 20,
+  "timeout_seconds": 10,
   "hook_timeout_seconds": 30,
   "max_output_tokens": 4096,
   "enabled": true,
@@ -85,7 +114,8 @@ python3 install.py --settings /绝对路径/你的项目/.claude/settings.local.
   "show_balance": true,
   "balance_path": "/user/balance",
   "balance_timeout_seconds": 3,
-  "balance_refresh_seconds": 30
+  "balance_refresh_seconds": 30,
+  "input_translation_enabled": true
 }
 ```
 
@@ -98,7 +128,7 @@ python3 install.py --settings /绝对路径/你的项目/.claude/settings.local.
 | `api_format` | `chat_completions` | 可选 chat_completions 或 responses |
 | `thinking_type` | `disabled` | DeepSeek 思考模式；disabled 关闭以减少翻译等待，通用服务可设为 null 不发送该参数 |
 | `model` | `deepseek-flash` | 服务支持的文本模型名称 |
-| `timeout_seconds` | `20` | 单次网络等待超时，必须大于 0 且小于 Hook 超时 |
+| `timeout_seconds` | `10` | 单次网络等待超时，必须大于 0 且小于 Hook 超时 |
 | `hook_timeout_seconds` | `30` | Claude Hook 超时，必须大于网络超时 |
 | `max_output_tokens` | `4096` | 译文输出 token 上限，超限回退原文 |
 | `enabled` | `true` | 设为 false，临时停止翻译 |
@@ -107,6 +137,7 @@ python3 install.py --settings /绝对路径/你的项目/.claude/settings.local.
 | `balance_path` | `/user/balance` | 余额接口路径，自动接在 base_url 后 |
 | `balance_timeout_seconds` | `3` | 单次余额查询的网络等待超时 |
 | `balance_refresh_seconds` | `30` | 余额刷新间隔（秒），最小 0.2，下一次查询读取新配置 |
+| `input_translation_enabled` | `true` | 启用固定 Option+A 输入翻译，需 macOS 原生助手权限 |
 
 `base_url` 必须包含服务要求的前缀（例如 `/v1`），脚本按 api_format 自动追加 `/chat/completions` 或 `/responses`，末尾斜杠会自动移除。默认 DeepSeek 使用 chat_completions 格式。
 所有项目配置均从文件读取，`OPENAI_API_KEY`、`OPENAI_MODEL` 和 `OPENAI_BASE_URL` 等环境变量不会覆盖文件配置。密钥不写入日志，config.json 已列入 .gitignore。
@@ -124,7 +155,7 @@ Responses 模式使用 `store: false`；Chat Completions 模式不发送 Respons
 - 空批次、纯空白、没有英文字母的文本跳过 API；全中文最终批次不重复请求。
 - 输出给 Claude 的 stdout 只有 Hook JSON；错误只向 stderr 输出不含原文或密钥的简短错误类型。
 - API 错误、缺少密钥、超时、拒绝回复、空译文或不完整响应时，返回 `{}`，显示英文原文。没有自动重试，以免增加屏幕等待。
-- Hook 注册超时为 30 秒，网络等待默认为 20 秒；外层 Hook 超时仍由 Claude 处理并回退原文。
+- Hook 注册超时为 30 秒，网络等待默认为 10 秒；外层 Hook 超时仍由 Claude 处理并回退原文。
 - 提示词要求保留 Markdown、代码、URL、路径、命令与标识符，但模型翻译不保证逐字符保留。不同批次独立翻译，跨批次代码块或术语一致性也可能受影响。
 - 翻译文本会发送给 base_url 配置的服务；不会上传整份 transcript。Claude verbose 模式显示原文。
 - 此工具仅改变本次渲染文本，不把中文译文写回 Claude 记录；不承诺历史重放界面始终显示中文。

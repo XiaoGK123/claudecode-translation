@@ -4,7 +4,7 @@
   "api_format": "chat_completions",
   "thinking_type": "disabled",
   "model": "deepseek-flash",
-  "timeout_seconds": 20,
+  "timeout_seconds": 10,
   "hook_timeout_seconds": 30,
   "max_output_tokens": 4096,
   "enabled": true,
@@ -12,5 +12,6 @@
   "show_balance": true,
   "balance_path": "/user/balance",
   "balance_timeout_seconds": 3,
-  "balance_refresh_seconds": 30
+  "balance_refresh_seconds": 30,
+  "input_translation_enabled": true
 }

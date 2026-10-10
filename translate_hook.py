@@ -26,7 +26,7 @@ def configuration():
     return result
 
 
-def translate(text, config):
+def translate(text, config, instructions=INSTRUCTIONS):
     key = config.get("api_key")
     if not isinstance(key, str) or not key.strip():
         raise RuntimeError("missing api_key in config.json")
@@ -38,13 +38,13 @@ def translate(text, config):
     api_format = config["api_format"]
     if api_format == "responses":
         endpoint = "/responses"
-        body = {"model": config["model"], "instructions": INSTRUCTIONS,
+        body = {"model": config["model"], "instructions": instructions,
                 "input": text, "store": False,
                 "max_output_tokens": int(config["max_output_tokens"])}
     elif api_format == "chat_completions":
         endpoint = "/chat/completions"
         body = {"model": config["model"], "messages": [
-            {"role": "system", "content": INSTRUCTIONS},
+            {"role": "system", "content": instructions},
             {"role": "user", "content": text}], "stream": False,
             "max_tokens": int(config["max_output_tokens"])}
         thinking = config.get("thinking_type")
