@@ -1,0 +1,16 @@
+{
+  "api_key": "",
+  "base_url": "https://api.deepseek.com",
+  "api_format": "chat_completions",
+  "thinking_type": "disabled",
+  "model": "deepseek-flash",
+  "timeout_seconds": 20,
+  "hook_timeout_seconds": 30,
+  "max_output_tokens": 4096,
+  "enabled": true,
+  "settings_file": "~/.claude/settings.json",
+  "show_balance": true,
+  "balance_path": "/user/balance",
+  "balance_timeout_seconds": 3,
+  "balance_refresh_seconds": 30
+}
