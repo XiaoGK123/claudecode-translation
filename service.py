@@ -246,6 +246,21 @@ def main():
                         choices=("run", "start", "stop", "status", "_run"))
     args = parser.parse_args()
     try:
+        if args.action in ("run", "start", "_run"):
+            config_path = ROOT / "config.json"
+            if not config_path.exists():
+                template = json.loads((ROOT / "config.example.json").read_text(encoding="utf-8"))
+                template["api_key"] = ""
+                try:
+                    fd = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                except FileExistsError:
+                    pass
+                else:
+                    with os.fdopen(fd, "w", encoding="utf-8") as target:
+                        json.dump(template, target, ensure_ascii=False, indent=2)
+                        target.write("\n")
+                    print(f"无config.json文件，目前已自动生成，文件位置：{config_path}，请配置api信息后重启", flush=True)
+                    return 0
         if args.action == "start":
             return start()
         if args.action == "stop":

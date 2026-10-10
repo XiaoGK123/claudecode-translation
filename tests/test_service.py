@@ -68,6 +68,21 @@ class ServiceTests(unittest.TestCase):
         self.command("stop")
         self.assertIn("Stopped", self.command("status"))
 
+    def test_missing_config_generated_without_starting_or_installing_hook(self):
+        for action in ([], ["start"], ["_run"]):
+            with self.subTest(action=action):
+                config = self.root / "config.json"
+                config.unlink()
+                result = subprocess.run([sys.executable, str(self.root / "service.py"), *action],
+                                        text=True, capture_output=True, timeout=5, check=True)
+                self.assertEqual(result.stdout.strip(),
+                                 f"无config.json文件，目前已自动生成，文件位置：{config.resolve()}，请配置api信息后重启")
+                self.assertEqual(result.stderr, "")
+                self.assertEqual(json.loads(config.read_text())["api_key"], "")
+                self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+                self.assertEqual(json.loads(self.settings.read_text()), self.original)
+                self.assertFalse((self.root / ".runtime").exists())
+
     def test_sigterm_cleans_hook(self):
         self.command("start")
         os.kill(self.pid(), signal.SIGTERM)

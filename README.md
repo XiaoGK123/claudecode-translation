@@ -20,7 +20,7 @@ Claude 英文回复 ───────────────→ Claude 会�
 
 ## 持续运行服务（推荐）
 
-所有配置均在本目录的 config.json 中。先填写 api_key、base_url、model，保持 enabled 为 true。
+所有配置均在本目录的 config.json 中。缺少文件时，运行 python3 service.py 会自动从示例生成空密钥配置，输出“无config.json文件，目前已自动生成，文件位置：…，请配置api信息后重启”后直接退出；不会安装 Hook 或启动服务。填写 api_key、base_url、model 后，再次运行，保持 enabled 为 true。
 默认 settings_file 为 ~/.claude/settings.json，启动服务会注册用户级 Hook，对所有 Claude 项目生效。
 如果只希望用于一个项目，将 settings_file 改为该项目 .claude/settings.local.json 的绝对路径。
 
@@ -68,7 +68,7 @@ python3 install.py --settings /绝对路径/你的项目/.claude/settings.local.
 
 ## 配置
 
-本机已准备一个空密钥的 `config.json`；解压项目包后，请先复制 `config.example.json` 为同目录的 `config.json`。配置示例：
+首次启动会自动生成缺失的 config.json（权限 600），保留 config.example.json 的默认值且 API Key 为空。已有 config.json 不会被覆盖。配置示例：
 
 ```json
 {
