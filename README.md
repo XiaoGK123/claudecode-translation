@@ -108,7 +108,7 @@ python3 install.py --settings /绝对路径/你的项目/.claude/settings.local.
   "model": "deepseek-flash",
   "timeout_seconds": 10,
   "hook_timeout_seconds": 30,
-  "max_output_tokens": 4096,
+  "max_output_tokens": 393216,
   "enabled": true,
   "settings_file": "~/.claude/settings.json",
   "show_balance": true,
@@ -130,7 +130,7 @@ python3 install.py --settings /绝对路径/你的项目/.claude/settings.local.
 | `model` | `deepseek-flash` | 服务支持的文本模型名称 |
 | `timeout_seconds` | `10` | 单次网络等待超时，必须大于 0 且小于 Hook 超时 |
 | `hook_timeout_seconds` | `30` | Claude Hook 超时，必须大于网络超时 |
-| `max_output_tokens` | `4096` | 译文输出 token 上限，超限回退原文 |
+| `max_output_tokens` | `393216` | 译文输出 token 上限，超限回退原文 |
 | `enabled` | `true` | 设为 false，临时停止翻译 |
 | `settings_file` | `~/.claude/settings.json` | 服务管理的 Claude 设置文件；默认对所有项目生效 |
 | `show_balance` | `true` | 启动状态行显示余额；false 则不查询 |

@@ -105,7 +105,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(body["model"], "deepseek-flash")
         self.assertEqual(body["messages"][1]["content"], "Tests passed.\n")
         self.assertFalse(body["stream"])
-        self.assertEqual(body["max_tokens"], 4096)
+        self.assertEqual(body["max_tokens"], 393216)
         self.assertEqual(body["thinking"], {"type": "disabled"})
         self.assertNotIn("store", body)
         self.assertNotIn("hidden", str(reply))
