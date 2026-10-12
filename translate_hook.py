@@ -93,7 +93,7 @@ def main():
         config = configuration()
         if config.get("enabled", True) and text.strip() and re.search(r"[A-Za-z]", text):
             translated = translate(text, config)
-            display = (text.rstrip() + "\n" + translated.lstrip()
+            display = (text.rstrip() + "\n\n---\n\n" + translated.lstrip()
                        if config.get("display_mode", "chinese") == "bilingual"
                        else translated)
             output = {"hookSpecificOutput": {"hookEventName": "MessageDisplay",

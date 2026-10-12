@@ -314,12 +314,15 @@ Responses 模式使用 `store: false`；Chat Completions 模式不发送 Respons
 
 ## 显示行为与限制 / Display Behavior and Limitations
 
-- 将 config.json 中的 `display_mode` 设为 `bilingual`，下一个 Hook 调用即生效。每个 `delta` 批次先显示英文原文，再换行显示中文译文，例如：
+- 将 config.json 中的 `display_mode` 设为 `bilingual`，下一个 Hook 调用即生效。每个 `delta` 批次先显示英文原文，再用 Markdown 分隔线 `---`（前后空行）分隔中文译文，例如：
 
-  > Set `display_mode` to `bilingual` in `config.json`; it takes effect on the next Hook call. Each `delta` batch displays the original English first, then a newline and the Chinese translation, for example:
+  > Set `display_mode` to `bilingual` in `config.json`; it takes effect on the next Hook call. Each `delta` batch displays the original English first, then a Markdown separator `---` with blank lines around it, followed by the Chinese translation, for example:
 
   ```text
   All tests passed.
+
+  ---
+
   所有测试均已通过。
   ```
 
