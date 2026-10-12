@@ -93,7 +93,7 @@ class IntegrationTests(unittest.TestCase):
         transcript.write_bytes(original)
         reply = self.hook(transcript_path=str(transcript))
         self.assertEqual(reply["hookSpecificOutput"]["displayContent"],
-                         "Tests passed.\n\n> 测试通过。\n")
+                         "测试通过。\n\n> Tests passed.\n")
         self.assertEqual(transcript.read_bytes(), original)
         self.assertEqual(len(self.requests), 1)
 
@@ -101,9 +101,10 @@ class IntegrationTests(unittest.TestCase):
         self.config["display_mode"] = "bilingual"
         translation = "步骤：\n\n- 运行命令\n\n```python\n    print('ok')\n```"
         self.response["output"][1]["content"][0]["text"] = translation
-        reply = self.hook(delta="Steps:\n")
+        original = "Steps:\n\n- Run command\n\n```python\n    print('ok')\n```\n"
+        reply = self.hook(delta=original)
         self.assertEqual(reply["hookSpecificOutput"]["displayContent"],
-                         "Steps:\n\n> 步骤：\n> \n> - 运行命令\n> \n"
+                         translation + "\n\n> Steps:\n> \n> - Run command\n> \n"
                          "> ```python\n>     print('ok')\n> ```\n")
 
     def test_bilingual_failure_falls_back(self):
