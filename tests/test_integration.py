@@ -93,7 +93,7 @@ class IntegrationTests(unittest.TestCase):
         transcript.write_bytes(original)
         reply = self.hook(transcript_path=str(transcript))
         self.assertEqual(reply["hookSpecificOutput"]["displayContent"],
-                         "Tests passed.\n测试通过。\n")
+                         "Tests passed.\n\n---\n\n测试通过。\n")
         self.assertEqual(transcript.read_bytes(), original)
         self.assertEqual(len(self.requests), 1)
 
