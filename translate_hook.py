@@ -93,9 +93,11 @@ def main():
         config = configuration()
         if config.get("enabled", True) and text.strip() and re.search(r"[A-Za-z]", text):
             translated = translate(text, config)
-            display = (text.rstrip() + "\n\n---\n\n" + translated.lstrip()
-                       if config.get("display_mode", "chinese") == "bilingual"
-                       else translated)
+            if config.get("display_mode", "chinese") == "bilingual":
+                quoted = "".join("> " + line for line in translated.lstrip("\r\n").splitlines(keepends=True))
+                display = text.rstrip() + "\n\n" + quoted
+            else:
+                display = translated
             output = {"hookSpecificOutput": {"hookEventName": "MessageDisplay",
                                              "displayContent": display}}
     except urllib.error.HTTPError as error:

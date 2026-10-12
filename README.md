@@ -79,7 +79,7 @@ On first launch, the service compiles the Swift helper and requests macOS Access
 
 ## Display Behavior and Limitations
 
-- Set `display_mode` to `bilingual` to show the original text and Chinese translation separated by a Markdown horizontal rule. Missing or unrecognized values use `chinese` mode. Translation failures display only the original text in either mode.
+- Set `display_mode` to `bilingual` to show the English original followed by the Chinese translation in a Markdown blockquote. Each translated line, including blank lines, is quoted to keep lists and code blocks inside the quote. Missing or unrecognized values use `chinese` mode. Translation failures display only the original text in either mode.
 - In interactive mode, each `delta` batch is translated separately, adding network latency. In non-interactive mode, complete text is typically processed after an assistant message finishes.
 - Only assistant reply text is translated. Blank content and text without English letters skip the API request. Tool results are not translated; user input is handled separately by Option+A.
 - API errors, timeouts, missing keys, refusals, empty translations, and incomplete responses fall back to the original text without automatic retries.

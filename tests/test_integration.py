@@ -93,9 +93,18 @@ class IntegrationTests(unittest.TestCase):
         transcript.write_bytes(original)
         reply = self.hook(transcript_path=str(transcript))
         self.assertEqual(reply["hookSpecificOutput"]["displayContent"],
-                         "Tests passed.\n\n---\n\n测试通过。\n")
+                         "Tests passed.\n\n> 测试通过。\n")
         self.assertEqual(transcript.read_bytes(), original)
         self.assertEqual(len(self.requests), 1)
+
+    def test_bilingual_multiline_markdown_in_quote(self):
+        self.config["display_mode"] = "bilingual"
+        translation = "步骤：\n\n- 运行命令\n\n```python\n    print('ok')\n```"
+        self.response["output"][1]["content"][0]["text"] = translation
+        reply = self.hook(delta="Steps:\n")
+        self.assertEqual(reply["hookSpecificOutput"]["displayContent"],
+                         "Steps:\n\n> 步骤：\n> \n> - 运行命令\n> \n"
+                         "> ```python\n>     print('ok')\n> ```\n")
 
     def test_bilingual_failure_falls_back(self):
         self.config["display_mode"] = "bilingual"
