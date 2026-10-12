@@ -8,6 +8,7 @@
   "hook_timeout_seconds": 30,
   "max_output_tokens": 393216,
   "enabled": true,
+  "display_mode": "chinese",
   "settings_file": "~/.claude/settings.json",
   "show_balance": true,
   "balance_path": "/user/balance",

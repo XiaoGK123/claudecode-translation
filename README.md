@@ -110,6 +110,7 @@ python3 install.py --settings /绝对路径/你的项目/.claude/settings.local.
   "hook_timeout_seconds": 30,
   "max_output_tokens": 393216,
   "enabled": true,
+  "display_mode": "chinese",
   "settings_file": "~/.claude/settings.json",
   "show_balance": true,
   "balance_path": "/user/balance",
@@ -132,6 +133,7 @@ python3 install.py --settings /绝对路径/你的项目/.claude/settings.local.
 | `hook_timeout_seconds` | `30` | Claude Hook 超时，必须大于网络超时 |
 | `max_output_tokens` | `393216` | 译文输出 token 上限，超限回退原文 |
 | `enabled` | `true` | 设为 false，临时停止翻译 |
+| `display_mode` | `chinese` | chinese 仅显示中文；bilingual 同时显示英文原文和中文译文 |
 | `settings_file` | `~/.claude/settings.json` | 服务管理的 Claude 设置文件；默认对所有项目生效 |
 | `show_balance` | `true` | 启动状态行显示余额；false 则不查询 |
 | `balance_path` | `/user/balance` | 余额接口路径，自动接在 base_url 后 |
@@ -148,6 +150,15 @@ Responses 模式使用 `store: false`；Chat Completions 模式不发送 Respons
 修改 api_key、base_url、model、网络超时或 enabled 后，下一个 Hook 调用就会读取新值。服务模式修改 hook_timeout_seconds 或 settings_file 后，按 Ctrl+C，再重新运行 python3 service.py。手动模式修改 Hook 超时后需重新安装。
 
 ## 显示行为与限制
+
+- 将 config.json 中的 `display_mode` 设为 `bilingual`，下一个 Hook 调用即生效。每个 `delta` 批次先显示英文原文，再换行显示中文译文，例如：
+
+  ```text
+  All tests passed.
+  所有测试均已通过。
+  ```
+
+  缺少该配置或填写其他值时沿用 `chinese` 模式；双语模式仍保留原始会话记录，翻译失败时仅显示原文。
 
 - 交互模式：每个 `delta` 批次单独翻译，不等待整个回复。因此显示有网络/翻译延迟，不是 token 级中文流式输出。
 - `claude -p` 等非交互模式：依据 Claude 文档，每个助手消息完成后会收到一次完整文本。

@@ -86,6 +86,27 @@ class IntegrationTests(unittest.TestCase):
         self.assertFalse(body["store"])
         self.assertNotIn("transcript_path", body)
 
+    def test_bilingual_display_and_transcript_unchanged(self):
+        self.config["display_mode"] = "bilingual"
+        transcript = self.root / "transcript.jsonl"
+        original = b'{"text":"Tests passed."}\n'
+        transcript.write_bytes(original)
+        reply = self.hook(transcript_path=str(transcript))
+        self.assertEqual(reply["hookSpecificOutput"]["displayContent"],
+                         "Tests passed.\n测试通过。\n")
+        self.assertEqual(transcript.read_bytes(), original)
+        self.assertEqual(len(self.requests), 1)
+
+    def test_bilingual_failure_falls_back(self):
+        self.config["display_mode"] = "bilingual"
+        self.http_status = 429
+        self.assertEqual(self.hook(), {})
+
+    def test_unknown_display_mode_uses_chinese(self):
+        self.config["display_mode"] = "unknown"
+        reply = self.hook()
+        self.assertEqual(reply["hookSpecificOutput"]["displayContent"], "测试通过。\n")
+
     def test_missing_key_falls_back(self):
         self.assertEqual(self.hook(key=None), {})
         self.assertEqual(self.requests, [])
