@@ -93,8 +93,11 @@ def main():
         config = configuration()
         if config.get("enabled", True) and text.strip() and re.search(r"[A-Za-z]", text):
             translated = translate(text, config)
+            display = (text.rstrip() + "\n" + translated.lstrip()
+                       if config.get("display_mode", "chinese") == "bilingual"
+                       else translated)
             output = {"hookSpecificOutput": {"hookEventName": "MessageDisplay",
-                                             "displayContent": translated}}
+                                             "displayContent": display}}
     except urllib.error.HTTPError as error:
         # Never log API bodies: they may contain original text or credentials.
         print(f"display-translator: API HTTP {error.code}; showing original", file=sys.stderr)
