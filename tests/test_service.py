@@ -23,6 +23,7 @@ class ServiceTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         for name in ("service.py", "hotkey.py", "balance.py", "translate_hook.py", "install.py", "config.example.json"):
             shutil.copy2(ROOT / name, self.root)
+        shutil.copytree(ROOT / "providers", self.root / "providers")
         self.settings = self.root / "claude-settings.json"
         self.original = {"permissions": {"allow": ["Read"]}, "hooks": {
             "Stop": [{"hooks": [{"type": "command", "command": "echo other"}]}]}}

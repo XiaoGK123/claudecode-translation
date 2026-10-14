@@ -7,6 +7,7 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
+from providers import get_provider, legacy_provider
 
 ROOT = Path(__file__).resolve().parent
 
@@ -16,7 +17,10 @@ def configuration():
     result = json.loads((ROOT / "config.example.json").read_text(encoding="utf-8"))
     path = ROOT / "config.json"
     if path.exists():
-        result.update(json.loads(path.read_text(encoding="utf-8")))
+        overrides = json.loads(path.read_text(encoding="utf-8"))
+        result.update(overrides)
+        if "api_provider" not in overrides:
+            result["api_provider"] = legacy_provider(result)
     return result
 
 
@@ -37,47 +41,16 @@ def translate(text, config, instructions=None):
     hook_timeout = float(config["hook_timeout_seconds"])
     if not math.isfinite(timeout) or not math.isfinite(hook_timeout) or not 0 < timeout < hook_timeout:
         raise RuntimeError("timeout_seconds must be positive and below hook_timeout_seconds")
+    provider = get_provider(config)
+    endpoint, body = provider.build_request(text, config, instructions)
     base = config["base_url"].strip().rstrip("/")
-    api_format = config["api_format"]
-    if api_format == "responses":
-        endpoint = "/responses"
-        body = {"model": config["model"], "instructions": instructions,
-                "input": text, "store": False,
-                "max_output_tokens": int(config["max_output_tokens"])}
-    elif api_format == "chat_completions":
-        endpoint = "/chat/completions"
-        body = {"model": config["model"], "messages": [
-            {"role": "system", "content": instructions},
-            {"role": "user", "content": text}], "stream": False,
-            "max_tokens": int(config["max_output_tokens"])}
-        thinking = config.get("thinking_type")
-        if thinking is not None:
-            if thinking not in ("enabled", "disabled"):
-                raise RuntimeError("invalid thinking_type")
-            body["thinking"] = {"type": thinking}
-    else:
-        raise RuntimeError("unsupported api_format")
     request = urllib.request.Request(
         base + endpoint, data=json.dumps(body).encode("utf-8"),
         headers={"Authorization": "Bearer " + key,
                  "Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(request, timeout=timeout) as response:
         data = json.load(response)
-    if api_format == "responses":
-        if data.get("status") != "completed":
-            raise RuntimeError("API response not completed")
-        chunks = [part["text"] for item in data.get("output", [])
-                  if item.get("type") == "message" and item.get("role") == "assistant"
-                  for part in item.get("content", [])
-                  if part.get("type") == "output_text" and isinstance(part.get("text"), str)]
-        translated = "".join(chunks)
-    else:
-        choice = data["choices"][0]
-        if choice.get("finish_reason") != "stop":
-            raise RuntimeError("chat response not completed")
-        translated = choice.get("message", {}).get("content")
-        if not isinstance(translated, str):
-            raise RuntimeError("chat response has no text")
+    translated = provider.parse_response(data, config)
     if not translated.strip():
         raise RuntimeError("API returned no translated text")
     # Preserve the exact boundary whitespace so adjacent display batches don't join.
