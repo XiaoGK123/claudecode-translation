@@ -53,6 +53,8 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 | `timeout_seconds` | `10` | Network timeout; must be positive and below the Hook timeout |
 | `hook_timeout_seconds` | `30` | Claude Hook timeout |
 | `max_output_tokens` | `393216` | Translation output token limit; incomplete output falls back to the original |
+| `reply_translation_prompt` | Built-in translation instructions | System prompt for translating replies into Simplified Chinese |
+| `input_translation_prompt` | Built-in translation instructions | System prompt for translating input into English |
 | `enabled` | `true` | Enable reply translation |
 | `display_mode` | `chinese` | `chinese` for translation only; `bilingual` for the Chinese translation followed by the English original in a blockquote |
 | `settings_file` | `~/.claude/settings.json` | Settings file used to register the Hook |
@@ -63,6 +65,8 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 | `input_translation_enabled` | `true` | Enable Option+A input translation |
 
 The script appends `/chat/completions` or `/responses` automatically. For OpenAI, use `https://api.openai.com/v1`, `responses`, a model available to your account, and the corresponding API key; set `thinking_type` to `null`. Responses requests use `store: false`. Each translation is an independent request.
+
+Both translation prompts are read from configuration on each translation. Edit `reply_translation_prompt` and `input_translation_prompt` in `config.json`; no service restart is needed. Existing configuration files that omit these fields use the defaults from `config.example.json`. Prompts must be non-empty strings; invalid values cause reply translation to show the original and input translation to attempt original-text recovery. In JSON strings, use `\\n` for line breaks.
 
 Changes to API settings, the model, network timeout, and `enabled` take effect on the next Hook call. Restart the service after changing `settings_file`, `hook_timeout_seconds`, or `input_translation_enabled`. The balance display shows the total available balance; query failures do not affect translation. The startup status does not confirm connectivity to the translation API.
 
