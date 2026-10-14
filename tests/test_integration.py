@@ -86,6 +86,34 @@ class IntegrationTests(unittest.TestCase):
         self.assertFalse(body["store"])
         self.assertNotIn("transcript_path", body)
 
+    def test_custom_reply_prompt_for_both_api_formats(self):
+        for api_format in ("responses", "chat_completions"):
+            with self.subTest(api_format=api_format):
+                self.config["api_format"] = api_format
+                self.config["reply_translation_prompt"] = "Custom reply instructions"
+                if api_format == "chat_completions":
+                    self.response = {"choices": [{"finish_reason": "stop",
+                                                 "message": {"content": "测试通过。"}}]}
+                self.hook()
+                body = self.requests[-1][1]
+                actual = (body["instructions"] if api_format == "responses"
+                          else body["messages"][0]["content"])
+                self.assertEqual(actual, "Custom reply instructions")
+
+    def test_old_config_uses_default_reply_prompt(self):
+        self.config.pop("reply_translation_prompt")
+        self.hook()
+        defaults = json.loads((self.root / "config.example.json").read_text())
+        self.assertEqual(self.requests[0][1]["instructions"],
+                         defaults["reply_translation_prompt"])
+
+    def test_invalid_reply_prompt_falls_back_without_request(self):
+        for prompt in ("", "   ", None, 42):
+            with self.subTest(prompt=prompt):
+                self.config["reply_translation_prompt"] = prompt
+                self.assertEqual(self.hook(), {})
+        self.assertEqual(self.requests, [])
+
     def test_bilingual_display_and_transcript_unchanged(self):
         self.config["display_mode"] = "bilingual"
         transcript = self.root / "transcript.jsonl"
