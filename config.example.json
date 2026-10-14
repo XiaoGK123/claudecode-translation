@@ -1,4 +1,5 @@
 {
+  "api_provider": "deepseek",
   "api_key": "",
   "base_url": "https://api.deepseek.com",
   "api_format": "chat_completions",

@@ -17,6 +17,7 @@ class IntegrationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
+        shutil.copytree(ROOT / "providers", self.root / "providers")
         shutil.copy2(ROOT / "translate_hook.py", self.root)
         shutil.copy2(ROOT / "config.example.json", self.root)
         self.requests = []
@@ -48,7 +49,7 @@ class IntegrationTests(unittest.TestCase):
         self.thread.start()
         self.config = json.loads((self.root / "config.example.json").read_text())
         self.config.update(api_key="test-only-key", base_url=f"http://127.0.0.1:{self.server.server_port}/v1/",
-                           model="configured-test-model", api_format="responses")
+                           model="configured-test-model", api_format="responses", api_provider="openai_compatible")
 
     def tearDown(self):
         self.server.shutdown()
@@ -151,6 +152,7 @@ class IntegrationTests(unittest.TestCase):
 
     def test_deepseek_chat_translation_and_transcript_unchanged(self):
         self.config["api_format"] = "chat_completions"
+        self.config["api_provider"] = "deepseek"
         self.config["model"] = "deepseek-flash"
         self.response = {"choices": [{"finish_reason": "stop", "message": {
             "role": "assistant", "content": "测试通过。", "reasoning_content": "hidden"}}]}
@@ -218,6 +220,7 @@ class InstallerTests(unittest.TestCase):
             root = Path(directory)
             for name in ("install.py", "translate_hook.py", "config.example.json"):
                 shutil.copy2(ROOT / name, root)
+            shutil.copytree(ROOT / "providers", root / "providers")
             (root / "config.json").write_text('{"timeout_seconds": 35, "hook_timeout_seconds": 45}')
             settings = root / "settings.json"
             subprocess.run([sys.executable, str(root / "install.py"), "--settings", str(settings)],

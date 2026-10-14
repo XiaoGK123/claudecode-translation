@@ -30,7 +30,7 @@ class BalanceTests(unittest.TestCase):
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
-        self.config = {"show_balance": True, "api_key": "test-key",
+        self.config = {"api_provider": "deepseek", "show_balance": True, "api_key": "test-key",
                        "base_url": f"http://127.0.0.1:{self.server.server_port}/",
                        "balance_path": "/user/balance", "balance_timeout_seconds": 0.5}
 
