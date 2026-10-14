@@ -1,17 +1,23 @@
 """Translate input to English while preserving Chinese in paired delimiters."""
-import re
 import sys
 
+from input_protection import CJK, protect, restore
 from translate_hook import configuration, translate, translation_prompt
-
-CJK = re.compile(r"[\u3400-\u9fff]")
 
 
 
 def translate_input(text, config):
     if not CJK.search(text):
         return text
-    return translate(text, config, translation_prompt(config, "input_translation_prompt"))
+    masked, replacements, prefix = protect(text)
+    if not CJK.search(masked):
+        return text
+    prompt = translation_prompt(config, "input_translation_prompt")
+    if replacements:
+        prompt += ("\nCopy every __KEEP_ placeholder exactly once, unchanged. "
+                   "Do not translate, remove, duplicate, or invent placeholders.")
+    result = translate(masked, config, prompt)
+    return restore(result, replacements, prefix)
 
 
 def main():
