@@ -69,14 +69,15 @@ class InputTranslationTests(unittest.TestCase):
                 self.assertIn('PlaceholderError', error.getvalue())
 
     def test_protected_roundtrip_through_both_api_formats(self):
-        import io
         import json
+        import httpx
+        from openai import OpenAI
         for api_format in ('chat_completions', 'responses'):
             config = configuration()
             config.update(api_key='test-only', api_provider='openai_compatible',
                           api_format=api_format)
-            def api(request, timeout):
-                body = json.loads(request.data)
+            def api(request):
+                body = json.loads(request.content)
                 payload = json.dumps(body, ensure_ascii=False)
                 self.assertNotIn('确认', payload)
                 token = re.search(r'__KEEP_[a-f0-9]+_0__', payload).group()
@@ -86,9 +87,11 @@ class InputTranslationTests(unittest.TestCase):
                 else:
                     data = {'status': 'completed', 'output': [{'type': 'message', 'role': 'assistant',
                             'content': [{'type': 'output_text', 'text': reply}]}]}
-                return io.StringIO(json.dumps(data))
+                return httpx.Response(200, json=data)
+            def client(**kwargs):
+                return OpenAI(**kwargs, http_client=httpx.Client(transport=httpx.MockTransport(api)))
             with self.subTest(api_format=api_format), \
-                    patch('translate_hook.urllib.request.urlopen', side_effect=api):
+                    patch('openai.OpenAI', side_effect=client):
                 self.assertEqual(translate_input('请点击“确认”', config), 'Click “确认”')
 
 

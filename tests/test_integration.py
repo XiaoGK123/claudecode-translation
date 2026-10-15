@@ -58,7 +58,10 @@ class IntegrationTests(unittest.TestCase):
 
     def hook(self, delta="Tests passed.\n", key="test-only-key", **fields):
         # Conflicting environment values must never override file configuration.
-        env = {**os.environ, "OPENAI_BASE_URL": "http://127.0.0.1:1/wrong",
+        # Local test traffic must not inherit the host's external proxy settings.
+        env = {**{key: value for key, value in os.environ.items()
+                  if not key.lower().endswith("_proxy")},
+               "OPENAI_BASE_URL": "http://127.0.0.1:1/wrong",
                "OPENAI_API_KEY": "ignored-environment-key", "OPENAI_MODEL": "ignored-model"}
         self.config["api_key"] = key
         (self.root / "config.json").write_text(json.dumps(self.config))

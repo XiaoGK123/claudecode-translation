@@ -2,7 +2,7 @@
 
 Translate Claude Code's English replies into Simplified Chinese through a `MessageDisplay` Hook. **Only the on-screen text is replaced**; conversation transcripts and model context retain the original replies. On macOS, the global **Option+A (⌥A)** shortcut also translates input into English.
 
-Uses the Python standard library with no third-party dependencies. DeepSeek is the default provider; services compatible with Chat Completions or Responses are also supported.
+DeepSeek is the default provider and uses the Python standard library. OpenAI compatible mode uses the official OpenAI Python SDK for Chat Completions and Responses.
 
 ## Requirements
 
@@ -16,8 +16,11 @@ Uses the Python standard library with no third-party dependencies. DeepSeek is t
 Run from the project directory:
 
 ```bash
+python3 -m pip install -r requirements.txt
 python3 service.py
 ```
+
+Install dependencies using the same Python interpreter that runs `service.py` and the Hook. The SDK is loaded only in `openai_compatible` mode; DeepSeek does not require it.
 
 On the first run, the service creates `config.json` with permissions `600` and exits. Fill in `api_key`, confirm `base_url` and `model`, then run it again.
 
@@ -107,7 +110,7 @@ Old `config.json` files without `api_provider` are migrated in memory: Chat Comp
 
 Create an adapter under `providers/` implementing `APIProvider` from `providers/base.py`. Implement `build_request(text, config, instructions)` to return an endpoint suffix and JSON body, and `parse_response(data, config)` to return translated text or reject incomplete results. Optionally override `balance_label(config)`; the default skips balance queries.
 
-Import and register the adapter instance in `PROVIDERS` in `providers/__init__.py`, then select its name with `api_provider`. The shared translation caller handles Bearer authentication, JSON POST transport, network timeout, empty-output rejection, and boundary whitespace. Add adapter tests for request format and response validation. Services requiring a different transport or authentication scheme also need that shared transport extended.
+Import and register the adapter instance in `PROVIDERS` in `providers/__init__.py`, then select its name with `api_provider`. The default adapter `request` method handles Bearer authentication and JSON POST transport using `urllib`; adapters can override it for another transport. `openai_compatible` uses `OpenAI.chat.completions.create` or `OpenAI.responses.create`, with explicit configuration values for the key, base URL, and timeout. SDK retries are disabled (`max_retries=0`). Clients are closed after each request. The shared translation caller validates timeouts, rejects empty output, and preserves boundary whitespace. Add adapter tests for request format and response validation.
 
 Both translation prompts are read from configuration on each translation. Edit `reply_translation_prompt` and `input_translation_prompt` in `config.json`; no service restart is needed. Existing configuration files that omit these fields use the defaults from `config.example.json`. Prompts must be non-empty strings; invalid values cause reply translation to show the original and input translation to attempt original-text recovery. In JSON strings, use `\\n` for line breaks.
 

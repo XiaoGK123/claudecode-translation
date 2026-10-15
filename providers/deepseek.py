@@ -6,9 +6,13 @@ import urllib.error
 import urllib.request
 
 from .openai_compatible import OpenAICompatibleProvider
+from .base import APIProvider
 
 
 class DeepSeekProvider(OpenAICompatibleProvider):
+    # Keep DeepSeek's vendor extension and transport independent of the SDK.
+    request = APIProvider.request
+
     def build_request(self, text, config, instructions):
         if config["api_format"] != "chat_completions":
             raise ValueError("DeepSeek requires chat_completions")

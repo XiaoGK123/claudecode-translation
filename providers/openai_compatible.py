@@ -3,6 +3,23 @@ from .base import APIProvider
 
 
 class OpenAICompatibleProvider(APIProvider):
+    def request(self, text, config, instructions, timeout):
+        _, body = self.build_request(text, config, instructions)
+        # Load lazily so DeepSeek can run without the optional SDK dependency.
+        try:
+            from openai import OpenAI
+        except ImportError:
+            raise RuntimeError("OpenAI compatible mode requires pip install -r requirements.txt") from None
+        with OpenAI(api_key=config["api_key"],
+                    base_url=config["base_url"].strip().rstrip("/"),
+                    timeout=timeout, max_retries=0,
+                    organization="", project="") as client:
+            if config["api_format"] == "responses":
+                response = client.responses.create(**body)
+            else:
+                response = client.chat.completions.create(**body)
+        return self.parse_response(response.model_dump(), config)
+
     def build_request(self, text, config, instructions):
         api_format = config["api_format"]
         if api_format == "responses":
