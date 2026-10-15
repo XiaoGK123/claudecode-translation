@@ -57,7 +57,7 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 | `reply_translation_prompt` | Built-in translation instructions | System prompt for translating replies into Simplified Chinese |
 | `input_translation_prompt` | Built-in translation instructions | System prompt for translating input into English |
 | `enabled` | `true` | Enable reply translation |
-| `display_mode` | `chinese` | `chinese` for translation only; `bilingual` for the Chinese translation followed by the English original in a blockquote |
+| `display_mode` | `bilingual` | `chinese` for translation only; `bilingual` for the Chinese translation followed by the English original in a blockquote |
 | `settings_file` | `~/.claude/settings.json` | Settings file used to register the Hook |
 | `show_balance` | `true` | Query and display the balance |
 | `balance_path` | `/user/balance` | Balance endpoint path |
@@ -130,7 +130,7 @@ On first launch, the service compiles the Swift helper and requests macOS Access
 
 ## Display Behavior and Limitations
 
-- Set `display_mode` to `bilingual` to show the Chinese translation first, followed by the English original in a Markdown blockquote. Each original line, including blank lines, is quoted to keep lists and code blocks inside the quote. Missing or unrecognized values use `chinese` mode. Translation failures display only the original text in either mode.
+- The default `display_mode` is `bilingual`: the Chinese translation appears first, followed by the English original in a Markdown blockquote. Each original line, including blank lines, is quoted to keep lists and code blocks inside the quote. Missing values use `bilingual` mode. Set `display_mode` to `chinese` for translation only; unrecognized values also use `chinese` mode. Translation failures display only the original text in either mode.
 - In interactive mode, each `delta` batch is translated separately, adding network latency. In non-interactive mode, complete text is typically processed after an assistant message finishes.
 - Only assistant reply text is translated. Blank content and text without English letters skip the API request. Tool results are not translated; user input is handled separately by Option+A.
 - API errors, timeouts, missing keys, refusals, empty translations, and incomplete responses fall back to the original text without automatic retries.
