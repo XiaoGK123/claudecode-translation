@@ -19,7 +19,7 @@ class InputTranslationTests(unittest.TestCase):
         def response(text, config, prompt):
             self.assertNotIn('确认', text)
             self.assertIn('—设置页面—', text)
-            self.assertIn('Copy every __KEEP_', prompt)
+            self.assertIn('Keep each __KEEP_', prompt)
             token = text.split('请点击', 1)[1].split('按钮', 1)[0]
             return f'Click the {token} button, then open —settings page—.'
         with patch("input_translate.translate", side_effect=response) as request:

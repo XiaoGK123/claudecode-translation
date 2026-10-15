@@ -14,8 +14,7 @@ def translate_input(text, config):
         return text
     prompt = translation_prompt(config, "input_translation_prompt")
     if replacements:
-        prompt += ("\nCopy every __KEEP_ placeholder exactly once, unchanged. "
-                   "Do not translate, remove, duplicate, or invent placeholders.")
+        prompt += "\nKeep each __KEEP_ placeholder exactly once, unchanged. Add none."
     result = translate(masked, config, prompt)
     return restore(result, replacements, prefix)
 
