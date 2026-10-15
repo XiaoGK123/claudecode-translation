@@ -73,6 +73,7 @@ class IntegrationTests(unittest.TestCase):
         return json.loads(run.stdout)
 
     def test_translation_and_transcript_unchanged(self):
+        self.config["display_mode"] = "chinese"
         transcript = self.root / "transcript.jsonl"
         original = b'{"text":"Tests passed."}\n'
         transcript.write_bytes(original)
@@ -126,6 +127,18 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(transcript.read_bytes(), original)
         self.assertEqual(len(self.requests), 1)
 
+    def test_default_display_is_bilingual(self):
+        self.assertEqual(self.config["display_mode"], "bilingual")
+        reply = self.hook()
+        self.assertEqual(reply["hookSpecificOutput"]["displayContent"],
+                         "测试通过。\n\n> Tests passed.\n")
+
+    def test_missing_display_mode_uses_bilingual(self):
+        self.config.pop("display_mode")
+        reply = self.hook()
+        self.assertEqual(reply["hookSpecificOutput"]["displayContent"],
+                         "测试通过。\n\n> Tests passed.\n")
+
     def test_bilingual_multiline_markdown_in_quote(self):
         self.config["display_mode"] = "bilingual"
         translation = "步骤：\n\n- 运行命令\n\n```python\n    print('ok')\n```"
@@ -151,6 +164,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.requests, [])
 
     def test_deepseek_chat_translation_and_transcript_unchanged(self):
+        self.config["display_mode"] = "chinese"
         self.config["api_format"] = "chat_completions"
         self.config["api_provider"] = "deepseek"
         self.config["model"] = "deepseek-flash"

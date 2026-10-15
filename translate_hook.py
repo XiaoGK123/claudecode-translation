@@ -69,7 +69,7 @@ def main():
         config = configuration()
         if config.get("enabled", True) and text.strip() and re.search(r"[A-Za-z]", text):
             translated = translate(text, config)
-            if config.get("display_mode", "chinese") == "bilingual":
+            if config.get("display_mode", "bilingual") == "bilingual":
                 quoted = "".join("> " + line for line in text.lstrip("\r\n").splitlines(keepends=True))
                 display = translated.rstrip() + "\n\n" + quoted
             else:
