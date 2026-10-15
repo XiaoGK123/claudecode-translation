@@ -54,6 +54,7 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 | `api_format` | `chat_completions` | DeepSeek: `chat_completions` only; OpenAI compatible: `chat_completions` or `responses` |
 | `model` | `deepseek-flash` | A model supported by your provider |
 | `thinking_type` | `disabled` | DeepSeek only: `enabled`, `disabled`, or `null` to omit; ignored by OpenAI compatible |
+| `extra_body` | `{"enable_thinking": false}` | OpenAI compatible only: JSON object passed to the SDK's `extra_body` for both API formats; use `{}` to send no extension fields |
 | `timeout_seconds` | `10` | Network timeout; must be positive and below the Hook timeout |
 | `hook_timeout_seconds` | `30` | Claude Hook timeout |
 | `max_output_tokens` | `393216` | Translation output token limit; incomplete output falls back to the original |
@@ -75,7 +76,7 @@ The selected adapter appends `/chat/completions` or `/responses` automatically. 
 Both reply and input translation use the selected provider. Set `api_provider` explicitly when switching services.
 
 - `deepseek`: Chat Completions with the DeepSeek `thinking` parameter and balance API.
-- `openai_compatible`: standard Chat Completions or Responses. No DeepSeek parameters are sent. Balance queries are unsupported and skipped, even when `show_balance` is true. Model and token limits must match the target service.
+- `openai_compatible`: Chat Completions or Responses through the SDK, with optional provider-specific fields from `extra_body`. The DeepSeek `thinking_type` setting is ignored. Balance queries are unsupported and skipped, even when `show_balance` is true. Model and token limits must match the target service.
 
 DeepSeek configuration (merge these fields into `config.json`):
 
@@ -98,11 +99,14 @@ OpenAI-compatible service configuration:
   "api_format": "chat_completions",
   "model": "your-model",
   "max_output_tokens": 4096,
+  "extra_body": {"enable_thinking": false},
   "show_balance": false
 }
 ```
 
 For an OpenAI Responses service, use the corresponding base URL and change `api_format` to `responses`. Supply that service's API key.
+
+`extra_body` is merged into the top level of the request JSON by the SDK; it is not sent as a nested `extra_body` field. Its default `enable_thinking: false` is a provider extension, so use `"extra_body": {}` for services that do not accept it (including the official OpenAI API). Existing config files that omit the setting inherit the default. Custom objects replace the entire default object. Non-object values cause translation to fail and follow the existing original-text recovery behavior. DeepSeek ignores `extra_body` and continues to use `thinking_type`.
 
 Old `config.json` files without `api_provider` are migrated in memory: Chat Completions at hostname `api.deepseek.com` selects DeepSeek; other URLs or Responses select OpenAI compatible. For DeepSeek proxies, explicitly set `api_provider: "deepseek"` to retain its thinking and balance behavior. Config files are not rewritten. Unknown providers or unsupported formats follow the existing translation failure recovery behavior.
 

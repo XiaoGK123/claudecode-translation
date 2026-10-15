@@ -101,6 +101,8 @@ class IntegrationTests(unittest.TestCase):
                                                  "message": {"content": "测试通过。"}}]}
                 self.hook()
                 body = self.requests[-1][1]
+                self.assertIs(body["enable_thinking"], False)
+                self.assertNotIn("extra_body", body)
                 actual = (body["instructions"] if api_format == "responses"
                           else body["messages"][0]["content"])
                 self.assertEqual(actual, "Custom reply instructions")

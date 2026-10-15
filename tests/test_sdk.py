@@ -58,6 +58,8 @@ class SDKTests(unittest.TestCase):
                 self.assertEqual(request.headers["Authorization"], "Bearer test-key")
                 body = json.loads(request.content)
                 self.assertEqual(body["model"], "test-model")
+                self.assertIs(body["enable_thinking"], False)
+                self.assertNotIn("extra_body", body)
                 self.assertNotIn("thinking", body)
                 if api_format == "responses":
                     self.assertEqual(request.url.path, "/v1/responses")
@@ -69,6 +71,43 @@ class SDKTests(unittest.TestCase):
                     self.assertEqual(body["messages"][1]["content"], " Hello\n")
                     self.assertFalse(body["stream"])
                 self.assertTrue(self.clients[-1].is_closed())
+
+    def test_extra_body_custom_and_empty_for_both_formats(self):
+        for api_format in ("chat_completions", "responses"):
+            self.config["api_format"] = api_format
+            if api_format == "responses":
+                self.response = {"status": "completed", "output": [
+                    {"type": "message", "role": "assistant", "content": [
+                        {"type": "output_text", "text": "译文"}]}]}
+            for extra in ({"custom_option": {"enabled": True}}, {}):
+                self.config["extra_body"] = extra
+                original = json.loads(json.dumps(extra))
+                with self.subTest(api_format=api_format, extra=extra):
+                    self.assertEqual(self.run_translation(), " 译文\n")
+                    body = json.loads(self.requests[-1].content)
+                    self.assertNotIn("enable_thinking", body)
+                    self.assertNotIn("extra_body", body)
+                    if extra:
+                        self.assertEqual(body["custom_option"], extra["custom_option"])
+                    self.assertEqual(extra, original)
+
+    def test_invalid_extra_body_rejected_before_sdk_client(self):
+        for extra in (None, [], "invalid", False, 42):
+            self.config["extra_body"] = extra
+            with self.subTest(extra=extra), patch("openai.OpenAI") as client:
+                with self.assertRaisesRegex(ValueError, "extra_body"):
+                    translate("Hello", self.config, "Translate")
+                client.assert_not_called()
+
+    def test_legacy_config_inherits_extra_body_default(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            defaults = Path(__file__).resolve().parents[1] / "config.example.json"
+            (root / "config.example.json").write_text(defaults.read_text())
+            (root / "config.json").write_text('{"api_provider": "openai_compatible"}')
+            with patch("translate_hook.ROOT", root):
+                self.assertEqual(configuration()["extra_body"], {"enable_thinking": False})
 
     def test_sdk_status_error_does_not_retry_and_closes_client(self):
         self.status = 429
@@ -132,8 +171,10 @@ class SDKTests(unittest.TestCase):
             self.config["api_provider"] = "deepseek"
             from io import BytesIO
             response = BytesIO(json.dumps(self.response).encode())
-            with patch("urllib.request.urlopen", return_value=response):
+            with patch("urllib.request.urlopen", return_value=response) as request:
                 self.assertEqual(translate("Hello", self.config, "Translate"), "译文")
+                self.assertNotIn("enable_thinking", json.loads(request.call_args.args[0].data))
+                self.assertNotIn("extra_body", json.loads(request.call_args.args[0].data))
 
 
 if __name__ == "__main__":
