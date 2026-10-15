@@ -4,6 +4,7 @@
   "base_url": "https://api.deepseek.com",
   "api_format": "chat_completions",
   "thinking_type": "disabled",
+  "extra_body": {"enable_thinking": false},
   "model": "deepseek-flash",
   "timeout_seconds": 10,
   "hook_timeout_seconds": 30,

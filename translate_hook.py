@@ -5,7 +5,6 @@ import math
 import re
 import sys
 import urllib.error
-import urllib.request
 from pathlib import Path
 from providers import get_provider, legacy_provider
 
@@ -42,15 +41,7 @@ def translate(text, config, instructions=None):
     if not math.isfinite(timeout) or not math.isfinite(hook_timeout) or not 0 < timeout < hook_timeout:
         raise RuntimeError("timeout_seconds must be positive and below hook_timeout_seconds")
     provider = get_provider(config)
-    endpoint, body = provider.build_request(text, config, instructions)
-    base = config["base_url"].strip().rstrip("/")
-    request = urllib.request.Request(
-        base + endpoint, data=json.dumps(body).encode("utf-8"),
-        headers={"Authorization": "Bearer " + key,
-                 "Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        data = json.load(response)
-    translated = provider.parse_response(data, config)
+    translated = provider.request(text, config, instructions, timeout)
     if not translated.strip():
         raise RuntimeError("API returned no translated text")
     # Preserve the exact boundary whitespace so adjacent display batches don't join.
