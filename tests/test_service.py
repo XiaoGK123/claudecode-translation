@@ -160,8 +160,8 @@ class ServiceTests(unittest.TestCase):
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
-        config = {"settings_file": str(self.settings), "api_key": "service-test-key",
-                  "input_translation_enabled": False,
+        config = {"settings_file": str(self.settings), "api_provider": "deepseek",
+                  "api_key": "service-test-key", "input_translation_enabled": False,
                   "base_url": f"http://127.0.0.1:{server.server_port}",
                   "balance_refresh_seconds": 0.2, "balance_timeout_seconds": 0.5}
         (self.root / "config.json").write_text(json.dumps(config))
