@@ -1,16 +1,16 @@
 """Translate input to English while preserving Chinese in paired delimiters."""
 import sys
 
-from input_protection import CJK, protect, restore
+from input_protection import has_chinese, protect, restore
 from translate_hook import configuration, translate, translation_prompt
 
 
 
 def translate_input(text, config):
-    if not CJK.search(text):
+    if not has_chinese(text):
         return text
     masked, replacements, prefix = protect(text)
-    if not CJK.search(masked):
+    if not has_chinese(masked):
         return text
     prompt = translation_prompt(config, "input_translation_prompt")
     if replacements:

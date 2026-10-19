@@ -17,26 +17,31 @@ ROOT = Path(__file__).resolve().parent
 def update(settings, remove=False):
     settings = settings.expanduser().resolve()
     data = json.loads(settings.read_text(encoding="utf-8")) if settings.exists() else {}
-    command = shlex.join([sys.executable, str(ROOT / "translate_hook.py")])
     hooks = data.setdefault("hooks", {})
-    groups = hooks.get("MessageDisplay", [])
-    # Match the exact installed command, leaving other display hooks untouched.
-    cleaned = []
-    for group in groups:
-        remaining = [h for h in group.get("hooks", []) if h.get("command") != command]
-        if remaining:
-            cleaned.append({**group, "hooks": remaining})
     if not remove:
         config = configuration()
         timeout = float(config["hook_timeout_seconds"])
         network_timeout = float(config["timeout_seconds"])
         if not 0 < network_timeout < timeout < float("inf"):
             raise ValueError("hook_timeout_seconds must exceed positive timeout_seconds")
-        cleaned.append({"hooks": [{"type": "command", "command": command, "timeout": timeout}]})
-    if cleaned:
-        hooks["MessageDisplay"] = cleaned
-    else:
-        hooks.pop("MessageDisplay", None)
+    for event, filename in (("MessageDisplay", "translate_hook.py"),
+                            ("UserPromptSubmit", "prompt_hook.py")):
+        command = shlex.join([sys.executable, str(ROOT / filename)])
+        # Match exact owned commands; preserve other hooks and group metadata.
+        cleaned = []
+        for group in hooks.get(event, []):
+            remaining = [h for h in group.get("hooks", []) if h.get("command") != command]
+            if remaining:
+                cleaned.append({**group, "hooks": remaining})
+        if not remove:
+            entry = {"type": "command", "command": command, "timeout": timeout}
+            if event == "UserPromptSubmit":
+                entry["onFailure"] = "block"
+            cleaned.append({"hooks": [entry]})
+        if cleaned:
+            hooks[event] = cleaned
+        else:
+            hooks.pop(event, None)
     if settings.exists() and data == json.loads(settings.read_text(encoding="utf-8")):
         return settings, None
     settings.parent.mkdir(parents=True, exist_ok=True)

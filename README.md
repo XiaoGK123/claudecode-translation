@@ -68,6 +68,7 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 | `balance_timeout_seconds` | `3` | Balance query timeout |
 | `balance_refresh_seconds` | `30` | Balance refresh interval, at least 0.2 seconds |
 | `input_translation_enabled` | `true` | Enable Option+A input translation |
+| `prompt_translation_enabled` | `true` | Block submissions containing unprotected Han characters or Chinese punctuation and offer an English translation |
 
 The selected adapter appends `/chat/completions` or `/responses` automatically. Responses requests use `store: false`. Each translation is an independent request.
 
@@ -120,17 +121,51 @@ Both translation prompts are read from configuration on each translation. Edit `
 
 Changes to API settings, the model, network timeout, and `enabled` take effect on the next Hook call. Restart the service after changing `settings_file`, `hook_timeout_seconds`, or `input_translation_enabled`. The balance display shows the total available balance; query failures do not affect translation. The startup status does not confirm connectivity to the translation API.
 
+## Submitted Prompt Guard
+
+The service and manual installer also register a synchronous `UserPromptSubmit`
+hook. With `prompt_translation_enabled: true` (the default), Han characters or
+Chinese punctuation outside protected passages block submission. This includes
+punctuation-only input such as `！？`, `，。`, and `“”`. ASCII punctuation, digits,
+and fullwidth letters/digits alone do not trigger the guard. The punctuation set
+is explicit in `input_protection.py`; shared marks such as `…`, `—`, and `·` also
+trigger it. Paired passages need Han characters to be protected, while backtick code is
+always protected. For Chinese double quotes `“…”`, only the contents are
+protected; the quotes remain subject to translation and submission checks.
+
+The hook translates the input and displays an English version in its block
+message for you to copy and submit again. It does not replace the prompt or
+submit automatically. For example, `请点击“确认”` is blocked and can be translated
+to `Click "确认"`; that English version is allowed because the Chinese is
+protected and the quotes are ASCII. `Click “确认”` is still blocked because its
+Chinese double quotes remain outside protection. Unprotected Chinese punctuation also triggers Option+A translation.
+
+Translation failures and translations still containing unprotected Han characters
+or Chinese punctuation remain blocked. Commands beginning with `/` and containing
+unprotected Chinese or Chinese punctuation are blocked with instructions to edit
+their arguments manually; command syntax is not sent for translation. Purely
+English commands proceed normally. The hook runs on every `UserPromptSubmit`
+event, including scheduled and other automatically generated turns.
+
+Set `prompt_translation_enabled: false` to disable this guard on its next call;
+it is independent of reply translation and the Option+A shortcut. Installation
+uses `onFailure: "block"` to block submission if the hook crashes or times out.
+Use a Claude Code version supporting that field and `suppressOriginalPrompt`,
+and verify both hooks in `/hooks` after restarting the service. The guard leaves
+the source text out of its block message, but Claude Code may still store it in
+local transcripts or prompt history. It does not prevent local storage.
+
 ## Option+A Input Translation
 
 Place the cursor in an input field and press **⌥A**. The helper translates the selection, or attempts to select all text in the current field if nothing is selected. It inserts the translation in place **without submitting it**. On failure, it attempts to restore the original text.
 
-Input translation protects Chinese inside `“…”`, `‘…’`, `「…」`, `『…』`, `（…）`, `【…】`, `〔…〕`, `《…》`, `〈…〉`, `(...)`, `[...]`, `{...}`, and `"..."` locally before calling the API. The entire passage, including delimiters, is replaced with a unique placeholder and restored verbatim after translation. Nested and multiline passages are supported; the outermost matching passage is protected. Ordinary unclosed or mismatched delimiters do not protect an outer passage, but valid inner passages can still be protected. Backslash-escaped delimiters are treated as literal text. English single quotes and paired dashes are not protected.
+Input translation protects Chinese inside `“…”`, `‘…’`, `「…」`, `『…』`, `（…）`, `【…】`, `〔…〕`, `《…》`, `〈…〉`, `(...)`, `[...]`, `{...}`, and `"..."` locally before calling the API. For `“…”`, only the contents are replaced with a unique placeholder and restored verbatim; the outer quotes are sent to the translator for conversion to English punctuation. Other supported pairs protect the entire passage, including delimiters. Nested and multiline passages are supported; the outermost matching passage is protected. Ordinary unclosed or mismatched delimiters do not protect an outer passage, but valid inner passages can still be protected. Backslash-escaped delimiters are treated as literal text. English single quotes and paired dashes are not protected.
 
-Backtick inline code (including multiple-backtick delimiters) and backtick fenced code blocks are always protected, even without Chinese. An unclosed fenced block is protected through the end of the input; an unclosed inline backtick is treated as ordinary text. If all Chinese is already protected, the original input is returned without an API call. Otherwise, the configured input prompt is supplemented with instructions to preserve placeholders. Missing, modified, duplicated, or invented placeholders fail translation with `PlaceholderError`, allowing the shortcut helper to attempt original-text recovery. Protected contents are never sent to the translation API.
+Backtick inline code (including multiple-backtick delimiters) and backtick fenced code blocks are always protected, even without Chinese. An unclosed fenced block is protected through the end of the input; an unclosed inline backtick is treated as ordinary text. If all Han characters and Chinese punctuation are already protected, the original input is returned without an API call. Otherwise, the configured input prompt is supplemented with instructions to preserve placeholders. Missing, modified, duplicated, or invented placeholders fail translation with `PlaceholderError`, allowing the shortcut helper to attempt original-text recovery. Protected contents are never sent to the translation API.
 
 On first launch, the service compiles the Swift helper and requests macOS Accessibility permission. Follow the prompts to allow the terminal running the service and the native helper. Grant Input Monitoring permission if requested, then restart the service. Reply translation remains available if shortcut permissions are missing.
 
-- For example, `请点击“确认”` can become `Click “确认”`: the local helper masks `“确认”` before the API call and restores it verbatim afterward. Preservation of protected passages is enforced by placeholder validation; English single quotes and paired dashes do not trigger protection.
+- For example, `请点击“确认”` can become `Click "确认"`: the local helper masks only `确认` before the API call and restores it verbatim afterward, while the translator converts the quotes. Chinese punctuation inside a protected Han-containing passage, such as `“你好，。”`, is restored along with its contents. Preservation of protected passages is enforced by placeholder validation; English single quotes and paired dashes do not trigger protection.
 - Switching apps or windows, clicking, scrolling, or typing during translation cancels automatic insertion. Recover the original text from the clipboard or undo the cut in the original field.
 - The original clipboard is restored after normal completion. New content copied by the user during translation is preserved. Password fields and system secure input are not processed.
 - Select-all and copy behavior varies by application and needs manual verification. Errors are written to `.runtime/hotkey.log`; input text and API keys are not logged.
