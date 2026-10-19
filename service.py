@@ -18,6 +18,7 @@ from install import update
 from balance import balance_label
 from translate_hook import configuration
 import hotkey
+import loc_monitor
 
 ROOT = Path(__file__).resolve().parent
 RUNTIME = ROOT / ".runtime"
@@ -137,6 +138,7 @@ def run():
                     print(line, flush=True)
 
             render(balance, initial=True)
+            loc_monitor.start(stopped, configuration, RUNTIME / "loc-monitor.log")
             threading.Thread(target=refresh_balance, args=(stopped, results, interval),
                              daemon=True).start()
             while running:

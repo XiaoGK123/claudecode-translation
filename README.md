@@ -69,6 +69,8 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 | `balance_refresh_seconds` | `30` | Balance refresh interval, at least 0.2 seconds |
 | `input_translation_enabled` | `true` | Enable Option+A input translation |
 | `prompt_translation_enabled` | `true` | Block submissions containing unprotected Han characters or Chinese punctuation without calling the translation API |
+| `loc_monitor_enabled` | `true` | Enable background Claude web egress region checks and macOS notifications |
+| `expected_loc` | `SG` | Expected two-letter region code from the Claude trace endpoint; case-insensitive |
 
 The selected adapter appends `/chat/completions` or `/responses` automatically. Responses requests use `store: false`. Each translation is an independent request.
 
@@ -120,6 +122,52 @@ Import and register the adapter instance in `PROVIDERS` in `providers/__init__.p
 Both translation prompts are read from configuration on each translation. Edit `reply_translation_prompt` and `input_translation_prompt` in `config.json`; no service restart is needed. Existing configuration files that omit these fields use the defaults from `config.example.json`. Prompts must be non-empty strings; invalid values cause reply translation to show the original and input translation to attempt original-text recovery. In JSON strings, use `\\n` for line breaks.
 
 Changes to API settings, the model, network timeout, and `enabled` take effect on the next Hook call. Restart the service after changing `settings_file`, `hook_timeout_seconds`, or `input_translation_enabled`. The balance display shows the total available balance; query failures do not affect translation. The startup status does not confirm connectivity to the translation API.
+
+## macOS Egress Region Monitor
+
+While the service is running on macOS, a background worker checks
+`https://claude.ai/cdn-cgi/trace` immediately when service startup completes and
+then every 60 seconds. It reads the `loc` field and compares it with
+`expected_loc` (default `SG`). Each request has a 10-second network timeout.
+Checks do not block the main service loop, reply translation, or Option+A.
+
+The worker sends a macOS Notification Center notification when:
+
+- The region differs: `出口地区异常：当前 JP，预期 SG`.
+- A request fails, including HTTP errors and timeouts.
+- The response has no `loc`, an invalid/duplicate `loc`, or invalid text.
+- The monitor configuration cannot be read or `expected_loc` is invalid.
+
+An unchanged problem notifies only once. A different region or error condition
+notifies again. A successful check matching the expected region resets this
+state, so a later recurrence notifies again; recovery itself is silent. The
+deduplication state is in memory and resets when the service restarts. If sending
+a notification fails, it is retried after the next scheduled check. Closing the
+service stops further checks and suppresses notifications from in-flight checks.
+
+For example, merge these fields into `config.json`:
+
+```json
+{
+  "loc_monitor_enabled": true,
+  "expected_loc": "SG"
+}
+```
+
+Both settings are read on each check, so changes apply on the next check without
+a restart. Set `loc_monitor_enabled` to `false` to stop requests and reset the
+alert state. Existing configurations inherit these defaults. The monitor is
+skipped on other operating systems and is active only while the service runs,
+not with standalone manual Hook installation.
+
+Notifications use the built-in `/usr/bin/osascript` notification command. Allow
+notifications for its associated app in macOS System Settings if needed; Focus
+and notification settings can hide banners even when the command succeeds.
+Actual banner delivery must be verified on your Mac. Monitor errors are written
+to `.runtime/loc-monitor.log`, without saving the trace body, IP address, API
+keys, or user input. The detected region describes this service process's route
+to `claude.ai`, including applicable proxy settings; it does not guarantee the
+same route is used by a browser or a separate Claude API request.
 
 ## Submitted Prompt Guard
 
