@@ -3,12 +3,25 @@ import re
 import uuid
 
 CJK = re.compile(r"[\u3400-\u9fff\uf900-\ufaff\U00020000-\U000323af]")
+# Explicit punctuation set: do not classify all fullwidth characters as Chinese.
+CHINESE_PUNCTUATION = re.compile(r"[，。！？；：、﹑﹔﹕﹖﹗“”‘’「」『』（）【】〔〕《》〈〉…—﹏～·．＂＇［］｛｝]")
 PAIRS = dict(zip('“‘「『（【〔《〈([{', '”’」』）】〕》〉)]}'))
 CLOSERS = set(PAIRS.values())
 
 
 class PlaceholderError(ValueError):
     """The translated response did not preserve the protected placeholders."""
+
+
+def has_chinese(text):
+    """Detect Han characters or configured Chinese punctuation in plain text."""
+    return bool(CJK.search(text) or CHINESE_PUNCTUATION.search(text))
+
+
+def needs_translation(text):
+    """Ignore existing protected passages before detecting Chinese input."""
+    masked, _, _ = protect(text)
+    return has_chinese(masked)
 
 
 def _escaped(text, index):
@@ -73,7 +86,10 @@ def protected_spans(text):
                 if stack and stack[-1][0] == char:
                     _, start = stack.pop()
                     if CJK.search(text[start:index + 1]):
-                        spans.append((start, index + 1))
+                        # Chinese double quotes remain visible to the translator
+                        # so it can normalize them to English punctuation.
+                        spans.append((start + 1, index) if text[start] == '“'
+                                     else (start, index + 1))
                 else:
                     # A malformed nesting must not create a false outer match.
                     stack.clear()

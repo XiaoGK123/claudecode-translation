@@ -19,6 +19,8 @@ class IntegrationTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         shutil.copytree(ROOT / "providers", self.root / "providers")
         shutil.copy2(ROOT / "translate_hook.py", self.root)
+        for name in ("prompt_hook.py", "input_translate.py", "input_protection.py"):
+            shutil.copy2(ROOT / name, self.root)
         shutil.copy2(ROOT / "config.example.json", self.root)
         self.requests = []
         self.response = {"status": "completed", "output": [
@@ -90,6 +92,34 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(body["input"], "Tests passed.\n")
         self.assertFalse(body["store"])
         self.assertNotIn("transcript_path", body)
+
+    def test_prompt_guard_punctuation_and_api_failure(self):
+        self.config.update(api_provider="deepseek", api_format="chat_completions")
+        (self.root / "config.json").write_text(json.dumps(self.config))
+        self.response = {"choices": [{"finish_reason": "stop", "message": {"content": "!?"}}]}
+        env = {key: value for key, value in os.environ.items()
+               if not key.lower().endswith("_proxy")}
+
+        def submit(prompt):
+            run = subprocess.run([sys.executable, str(self.root / "prompt_hook.py")],
+                                 input=json.dumps({"hook_event_name": "UserPromptSubmit", "prompt": prompt}),
+                                 capture_output=True, text=True, env=env, timeout=5)
+            self.assertEqual(run.returncode, 0)
+            self.assertEqual(run.stderr, "")
+            return json.loads(run.stdout)
+
+        blocked = submit("！？")
+        self.assertEqual(blocked["decision"], "block")
+        self.assertIn("!?", blocked["reason"])
+        self.assertEqual(self.requests[0][1]["messages"][1]["content"], "！？")
+        self.assertEqual(submit("!?"), {})
+        self.assertEqual(submit('Click "确认！"'), {})
+        self.assertEqual(len(self.requests), 1)
+        self.http_status = 503
+        failed = submit("你好")
+        self.assertEqual(failed["decision"], "block")
+        self.assertIn("失败", failed["reason"])
+        self.assertNotIn("test-only-key", json.dumps(failed))
 
     def test_custom_reply_prompt_for_both_api_formats(self):
         for api_format in ("responses", "chat_completions"):
@@ -252,6 +282,7 @@ class InstallerTests(unittest.TestCase):
             path = Path(directory) / "settings.json"
             original = {"permissions": {"allow": ["Read"]}, "hooks": {
                 "Stop": [{"hooks": [{"type": "command", "command": "echo stop"}]}],
+                "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "echo prompt"}]}],
                 "MessageDisplay": [{"hooks": [{"type": "command", "command": "echo other"}]}]}}
             path.write_text(json.dumps(original))
 
@@ -264,6 +295,10 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(first["permissions"], original["permissions"])
             self.assertEqual(first["hooks"]["Stop"], original["hooks"]["Stop"])
             self.assertEqual(len(first["hooks"]["MessageDisplay"]), 2)
+            self.assertEqual(len(first["hooks"]["UserPromptSubmit"]), 2)
+            guard = first["hooks"]["UserPromptSubmit"][-1]["hooks"][0]
+            self.assertEqual(guard["onFailure"], "block")
+            self.assertNotIn("async", guard)
             self.assertEqual(install(), first)
             self.assertEqual(len(list(Path(directory).glob("*.backup-*"))), 1)
             self.assertEqual(install("--remove"), original)

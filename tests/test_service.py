@@ -41,7 +41,9 @@ class ServiceTests(unittest.TestCase):
             self.temp.cleanup()
 
     def installed(self):
-        return "MessageDisplay" in json.loads(self.settings.read_text())["hooks"]
+        hooks = json.loads(self.settings.read_text())["hooks"]
+        self.assertEqual("MessageDisplay" in hooks, "UserPromptSubmit" in hooks)
+        return "MessageDisplay" in hooks
 
     def pid(self):
         return int(re.search(r"PID (\d+)", self.command("status")).group(1))

@@ -45,7 +45,7 @@ class InputTranslationTests(unittest.TestCase):
                 translate_input('请点击“确认”', configuration())
 
     def test_only_protected_chinese_skips_api(self):
-        for text in ('“确认”', 'Click 【设置】', '`中文`', '```python\n中文\n```'):
+        for text in ('"确认"', 'Click 【设置】', '`中文`', '```python\n中文\n```'):
             with self.subTest(text=text), patch('input_translate.translate') as request:
                 self.assertEqual(translate_input(text, {}), text)
                 request.assert_not_called()
@@ -81,7 +81,7 @@ class InputTranslationTests(unittest.TestCase):
                 payload = json.dumps(body, ensure_ascii=False)
                 self.assertNotIn('确认', payload)
                 token = re.search(r'__KEEP_[a-f0-9]+_0__', payload).group()
-                reply = 'Click ' + token
+                reply = 'Click "' + token + '"'
                 if api_format == 'chat_completions':
                     data = {'choices': [{'message': {'content': reply}, 'finish_reason': 'stop'}]}
                 else:
@@ -92,7 +92,7 @@ class InputTranslationTests(unittest.TestCase):
                 return OpenAI(**kwargs, http_client=httpx.Client(transport=httpx.MockTransport(api)))
             with self.subTest(api_format=api_format), \
                     patch('openai.OpenAI', side_effect=client):
-                self.assertEqual(translate_input('请点击“确认”', config), 'Click “确认”')
+                self.assertEqual(translate_input('请点击“确认”', config), 'Click "确认"')
 
 
 class InputProtectionTests(unittest.TestCase):
@@ -103,13 +103,22 @@ class InputProtectionTests(unittest.TestCase):
         for opening, closing in {**PAIRS, '"': '"'}.items():
             with self.subTest(opening=opening):
                 passage = opening + '中文\n内容' + closing
-                self.assert_spans('翻译' + passage + '文字', [passage])
+                expected = '中文\n内容' if opening == '“' else passage
+                self.assert_spans('翻译' + passage + '文字', [expected])
                 self.assert_spans(opening + 'English' + closing, [])
 
     def test_outermost_nested_and_multiline(self):
         self.assert_spans('请看【设置（“确认”）\n页面】然后「帮助」',
                           ['【设置（“确认”）\n页面】', '「帮助」'])
-        self.assert_spans('【未闭合 “确认”', ['“确认”'])
+        self.assert_spans('【未闭合 “确认”', ['确认'])
+
+    def test_chinese_double_quotes_only_mask_contents(self):
+        text = '“你好，。”'
+        masked, replacements, prefix = protect(text)
+        self.assertEqual(list(replacements.values()), ['你好，。'])
+        token = next(iter(replacements))
+        self.assertEqual(masked, '“' + token + '”')
+        self.assertEqual(restore('"' + token + '"', replacements, prefix), '"你好，。"')
 
     def test_unclosed_and_malformed_pairs(self):
         for text in ('“中文', '(中文]', '【中文）】', '中文”', "'中文'", '—中文—'):
