@@ -93,8 +93,8 @@ class IntegrationTests(unittest.TestCase):
         self.assertFalse(body["store"])
         self.assertNotIn("transcript_path", body)
 
-    def test_prompt_guard_punctuation_and_api_failure(self):
-        self.config.update(api_provider="deepseek", api_format="chat_completions")
+    def test_prompt_guard_blocks_without_api(self):
+        self.config.update(api_provider="deepseek", api_format="chat_completions", api_key="")
         (self.root / "config.json").write_text(json.dumps(self.config))
         self.response = {"choices": [{"finish_reason": "stop", "message": {"content": "!?"}}]}
         env = {key: value for key, value in os.environ.items()
@@ -108,18 +108,14 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(run.stderr, "")
             return json.loads(run.stdout)
 
-        blocked = submit("！？")
-        self.assertEqual(blocked["decision"], "block")
-        self.assertIn("!?", blocked["reason"])
-        self.assertEqual(self.requests[0][1]["messages"][1]["content"], "！？")
+        for prompt in ("！？", "你好", "/review 中文", '“你好”'):
+            with self.subTest(prompt=prompt):
+                result = submit(prompt)
+                self.assertEqual(result["decision"], "block")
+                self.assertEqual(result["reason"], "检测到未受保护的中文片段")
         self.assertEqual(submit("!?"), {})
         self.assertEqual(submit('Click "确认！"'), {})
-        self.assertEqual(len(self.requests), 1)
-        self.http_status = 503
-        failed = submit("你好")
-        self.assertEqual(failed["decision"], "block")
-        self.assertIn("失败", failed["reason"])
-        self.assertNotIn("test-only-key", json.dumps(failed))
+        self.assertEqual(self.requests, [])
 
     def test_custom_reply_prompt_for_both_api_formats(self):
         for api_format in ("responses", "chat_completions"):

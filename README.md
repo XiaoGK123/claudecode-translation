@@ -68,7 +68,7 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 | `balance_timeout_seconds` | `3` | Balance query timeout |
 | `balance_refresh_seconds` | `30` | Balance refresh interval, at least 0.2 seconds |
 | `input_translation_enabled` | `true` | Enable Option+A input translation |
-| `prompt_translation_enabled` | `true` | Block submissions containing unprotected Han characters or Chinese punctuation and offer an English translation |
+| `prompt_translation_enabled` | `true` | Block submissions containing unprotected Han characters or Chinese punctuation without calling the translation API |
 
 The selected adapter appends `/chat/completions` or `/responses` automatically. Responses requests use `store: false`. Each translation is an independent request.
 
@@ -133,19 +133,17 @@ trigger it. Paired passages need Han characters to be protected, while backtick 
 always protected. For Chinese double quotes `“…”`, only the contents are
 protected; the quotes remain subject to translation and submission checks.
 
-The hook translates the input and displays an English version in its block
-message for you to copy and submit again. It does not replace the prompt or
-submit automatically. For example, `请点击“确认”` is blocked and can be translated
-to `Click "确认"`; that English version is allowed because the Chinese is
-protected and the quotes are ASCII. `Click “确认”` is still blocked because its
-Chinese double quotes remain outside protection. Unprotected Chinese punctuation also triggers Option+A translation.
+The hook checks input locally and never calls the translation API. Every blocked
+submission, including punctuation-only input and `/commands` with unprotected
+Chinese, shows exactly `检测到未受保护的中文片段`. It does not offer a translation,
+replace the prompt, or submit automatically. Use Option+A separately if you want
+to translate the input. For example, `请点击“确认”` and `Click “确认”` are blocked,
+while `Click "确认"` is allowed because the Chinese is protected and the quotes
+are ASCII. The existing Option+A translation still calls the configured API.
 
-Translation failures and translations still containing unprotected Han characters
-or Chinese punctuation remain blocked. Commands beginning with `/` and containing
-unprotected Chinese or Chinese punctuation are blocked with instructions to edit
-their arguments manually; command syntax is not sent for translation. Purely
-English commands proceed normally. The hook runs on every `UserPromptSubmit`
-event, including scheduled and other automatically generated turns.
+The hook runs on every `UserPromptSubmit` event, including scheduled and other
+automatically generated turns. Input or configuration errors also block with
+the same message and do not expose error details.
 
 Set `prompt_translation_enabled: false` to disable this guard on its next call;
 it is independent of reply translation and the Option+A shortcut. Installation
