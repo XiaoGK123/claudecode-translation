@@ -127,7 +127,7 @@ Changes to API settings, the model, network timeout, and `enabled` take effect o
 
 While the service is running on macOS, a background worker checks
 `https://claude.ai/cdn-cgi/trace` immediately when service startup completes and
-then every 60 seconds. It reads the `loc` field and compares it with
+then every 30 seconds. It reads the `loc` field and compares it with
 `expected_loc` (default `SG`). Each request has a 10-second network timeout.
 Checks do not block the main service loop, reply translation, or Option+A.
 
@@ -140,7 +140,7 @@ The worker sends a macOS Notification Center notification when:
 
 Every check that detects a region mismatch or an error sends a notification,
 including consecutive checks with the same region or error. While a problem
-persists, notifications repeat every 60 seconds. Checks matching the expected
+persists, notifications repeat every 30 seconds. Checks matching the expected
 region and disabled checks are silent. If sending a notification fails, it is
 retried after the next scheduled check. Closing the service stops further checks
 and suppresses notifications from in-flight checks.

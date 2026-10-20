@@ -9,7 +9,7 @@ import urllib.error
 import urllib.request
 
 TRACE_URL = "https://claude.ai/cdn-cgi/trace"
-INTERVAL_SECONDS = 60
+INTERVAL_SECONDS = 30
 REQUEST_TIMEOUT_SECONDS = 10
 NOTIFICATION_TITLE = "Claude Code 出口地区监测"
 NOTIFICATION_SCRIPT = """on run argv

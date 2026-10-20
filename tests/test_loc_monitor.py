@@ -60,7 +60,7 @@ class LocMonitorTests(unittest.TestCase):
             loc_monitor.monitor(stopped, configuration, log)
         self.assertEqual(check.call_count, len(problems))
         self.assertEqual(configuration.call_count, len(problems))
-        self.assertEqual(stopped.wait.call_args_list[0].args, (60,))
+        self.assertEqual(stopped.wait.call_args_list[0].args, (30,))
         return notify, log
 
     def test_every_unhealthy_check_notifies_including_repeated_regions(self):
@@ -71,7 +71,7 @@ class LocMonitorTests(unittest.TestCase):
         self.assertEqual([call.args[0] for call in notify.call_args_list], expected)
         self.assertEqual([call.args[0] for call in log.call_args_list], expected)
 
-    def test_notification_failure_retries_next_minute(self):
+    def test_notification_failure_retries_next_check(self):
         problem = (("trace", "missing"), "缺少 loc")
         notify, log = self.run_sequence([problem, problem], OSError("secret"))
         self.assertEqual(notify.call_count, 2)
