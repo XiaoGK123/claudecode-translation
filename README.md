@@ -27,7 +27,7 @@ On the first run, the service creates `config.json` with permissions `600` and e
 The service stays in the current terminal, registers the Hook automatically, and refreshes the balance on the same status line. By default, it updates `~/.claude/settings.json`, applying to all Claude projects. To use it for a single project, set `settings_file` to the absolute path of that project's `.claude/settings.local.json`.
 
 The status line also shows whether submitted prompt checking
-(`prompt_translation_enabled`) and egress region monitoring (`loc_monitor_enabled`)
+(`prompt_guard_enabled`) and egress region monitoring (`loc_monitor_enabled`)
 are enabled. In an interactive terminal, these switch indicators refresh within
 about one second after configuration changes; region checks run every 60 seconds.
 
@@ -73,7 +73,7 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 | `balance_timeout_seconds` | `3` | Balance query timeout |
 | `balance_refresh_seconds` | `30` | Balance refresh interval, at least 0.2 seconds |
 | `input_translation_enabled` | `true` | Enable Option+A input translation |
-| `prompt_translation_enabled` | `true` | Block submissions containing unprotected Han characters or Chinese punctuation without calling the translation API |
+| `prompt_guard_enabled` | `true` | Block submissions containing unprotected Han characters or Chinese punctuation without calling the translation API |
 | `loc_monitor_enabled` | `true` | Enable background Claude web egress region checks and macOS notifications |
 | `expected_loc` | `SG` | Expected two-letter region code from the Claude trace endpoint; case-insensitive |
 
@@ -177,7 +177,7 @@ same route is used by a browser or a separate Claude API request.
 ## Submitted Prompt Guard
 
 The service and manual installer also register a synchronous `UserPromptSubmit`
-hook. With `prompt_translation_enabled: true` (the default), Han characters or
+hook. With `prompt_guard_enabled: true` (the default), Han characters or
 Chinese punctuation outside protected passages block submission. This includes
 punctuation-only input such as `！？`, `，。`, and `“”`. ASCII punctuation, digits,
 and fullwidth letters/digits alone do not trigger the guard. The punctuation set
@@ -198,8 +198,11 @@ The hook runs on every `UserPromptSubmit` event, including scheduled and other
 automatically generated turns. Input or configuration errors also block with
 the same message and do not expose error details.
 
-Set `prompt_translation_enabled: false` to disable this guard on its next call;
-it is independent of reply translation and the Option+A shortcut. Installation
+Set `prompt_guard_enabled: false` to disable this guard on its next call.
+The old `prompt_translation_enabled` key remains supported as a compatibility
+alias. If both keys are present in `config.json`, `prompt_guard_enabled` takes
+precedence. Existing configuration files are not rewritten.
+The guard is independent of reply translation and the Option+A shortcut. Installation
 uses `onFailure: "block"` to block submission if the hook crashes or times out.
 Use a Claude Code version supporting that field and `suppressOriginalPrompt`,
 and verify both hooks in `/hooks` after restarting the service. The guard leaves

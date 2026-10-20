@@ -127,7 +127,7 @@ class LocMonitorTests(unittest.TestCase):
             client.recv.return_value = b"stop\n"
             config = {"settings_file": str(root / "settings.json"), "balance_refresh_seconds": 30,
                       "model": "test", "input_translation_enabled": False,
-                      "prompt_translation_enabled": False, "loc_monitor_enabled": True}
+                      "prompt_guard_enabled": False, "loc_monitor_enabled": True}
             with patch.multiple(service, RUNTIME=root, SOCKET=root / "control.sock", STATE=root / "state.json"), \
                     patch("service.configuration", return_value=config), patch("service.update"), \
                     patch("service.balance_label", return_value=None), patch("service.signal.signal"), \

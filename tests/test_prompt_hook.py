@@ -1,6 +1,7 @@
 import io
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -8,6 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from input_protection import needs_translation
 from prompt_hook import handle, main
+from translate_hook import configuration, ROOT
 
 
 class PromptHookTests(unittest.TestCase):
@@ -26,8 +28,27 @@ class PromptHookTests(unittest.TestCase):
     def test_english_and_disabled_skip_api(self):
         with patch("urllib.request.urlopen") as request:
             self.assertEqual(handle(self.event('Click "确认"'), {}), {})
-            self.assertEqual(handle(self.event("你好！"), {"prompt_translation_enabled": False}), {})
+            self.assertEqual(handle(self.event("你好！"), {"prompt_guard_enabled": False}), {})
             request.assert_not_called()
+
+    def test_guard_config_defaults_legacy_alias_and_new_key_precedence(self):
+        cases = [({}, True), ({"prompt_translation_enabled": False}, False),
+                 ({"prompt_translation_enabled": True}, True),
+                 ({"prompt_guard_enabled": False}, False),
+                 ({"prompt_guard_enabled": True, "prompt_translation_enabled": False}, True),
+                 ({"prompt_guard_enabled": False, "prompt_translation_enabled": True}, False)]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "config.example.json").write_text((ROOT / "config.example.json").read_text())
+            for overrides, expected in cases:
+                with self.subTest(overrides=overrides), patch("translate_hook.ROOT", root):
+                    source = json.dumps(overrides)
+                    (root / "config.json").write_text(source)
+                    config = configuration()
+                    self.assertIs(config["prompt_guard_enabled"], expected)
+                    result = handle(self.event("你好"), config)
+                    self.assertEqual(result.get("decision") == "block", expected)
+                    self.assertEqual((root / "config.json").read_text(), source)
 
     def test_all_blocked_prompts_use_exact_message_without_api(self):
         for prompt in ("你好", "！？", '请点击“确认”', "/review 中文", "/review ，"):

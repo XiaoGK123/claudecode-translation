@@ -19,7 +19,7 @@ def handle(event, config):
     prompt = event.get("prompt")
     if not isinstance(prompt, str):
         raise ValueError("expected string prompt")
-    if not config.get("prompt_translation_enabled", True) or not needs_translation(prompt):
+    if not config.get("prompt_guard_enabled", True) or not needs_translation(prompt):
         return {}
     return blocked()
 

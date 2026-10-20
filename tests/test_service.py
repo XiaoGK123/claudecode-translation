@@ -193,7 +193,7 @@ class ServiceTests(unittest.TestCase):
             self.assertTrue(all(path == "/user/balance" for path in requests))
             self.assertIn("中文提交检查 已开启", text)
             self.assertIn("出口地区监测 已关闭", text)
-            config["prompt_translation_enabled"] = False
+            config["prompt_guard_enabled"] = False
             (self.root / "config.json").write_text(json.dumps(config))
             changed = b""
             deadline = time.monotonic() + 5
