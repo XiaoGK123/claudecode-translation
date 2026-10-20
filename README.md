@@ -138,12 +138,12 @@ The worker sends a macOS Notification Center notification when:
 - The response has no `loc`, an invalid/duplicate `loc`, or invalid text.
 - The monitor configuration cannot be read or `expected_loc` is invalid.
 
-An unchanged problem notifies only once. A different region or error condition
-notifies again. A successful check matching the expected region resets this
-state, so a later recurrence notifies again; recovery itself is silent. The
-deduplication state is in memory and resets when the service restarts. If sending
-a notification fails, it is retried after the next scheduled check. Closing the
-service stops further checks and suppresses notifications from in-flight checks.
+Every check that detects a region mismatch or an error sends a notification,
+including consecutive checks with the same region or error. While a problem
+persists, notifications repeat every 60 seconds. Checks matching the expected
+region and disabled checks are silent. If sending a notification fails, it is
+retried after the next scheduled check. Closing the service stops further checks
+and suppresses notifications from in-flight checks.
 
 For example, merge these fields into `config.json`:
 

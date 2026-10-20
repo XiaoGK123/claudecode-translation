@@ -63,11 +63,13 @@ class LocMonitorTests(unittest.TestCase):
         self.assertEqual(stopped.wait.call_args_list[0].args, (60,))
         return notify, log
 
-    def test_immediate_check_deduplication_and_recovery(self):
+    def test_every_unhealthy_check_notifies_including_repeated_regions(self):
         mismatch = (("mismatch", "JP", "SG"), "地区异常")
         failure = (("request", "TimeoutError"), "请求失败")
-        notify, _ = self.run_sequence([mismatch, mismatch, None, mismatch, failure, failure])
-        self.assertEqual([call.args[0] for call in notify.call_args_list], ["地区异常", "地区异常", "请求失败"])
+        notify, log = self.run_sequence([mismatch, mismatch, None, mismatch, failure, failure])
+        expected = ["地区异常", "地区异常", "地区异常", "请求失败", "请求失败"]
+        self.assertEqual([call.args[0] for call in notify.call_args_list], expected)
+        self.assertEqual([call.args[0] for call in log.call_args_list], expected)
 
     def test_notification_failure_retries_next_minute(self):
         problem = (("trace", "missing"), "缺少 loc")

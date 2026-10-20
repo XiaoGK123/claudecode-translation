@@ -38,7 +38,7 @@ def read_loc():
 
 
 def check(config):
-    """Return (deduplication key, notification text), or None when healthy/off."""
+    """Return (problem details, notification text), or None when healthy/off."""
     if not config.get("loc_monitor_enabled", True):
         return None
     expected = config.get("expected_loc", "SG")
@@ -67,7 +67,6 @@ def notify(message):
 
 
 def monitor(stopped, configuration, log):
-    last_alert = None
     while not stopped.is_set():
         started = time.monotonic()
         try:
@@ -76,19 +75,13 @@ def monitor(stopped, configuration, log):
             problem = (("config",), "出口地区检查失败：无法读取配置")
         if stopped.is_set():
             return
-        if problem is None:
-            last_alert = None
-        else:
-            key, message = problem
-            if key != last_alert:
-                log(message)
-                try:
-                    notify(message)
-                except Exception as error:
-                    # Leave the incident unacknowledged; retry on the next check.
-                    log(f"系统通知发送失败（{type(error).__name__}）")
-                else:
-                    last_alert = key
+        if problem is not None:
+            _, message = problem
+            log(message)
+            try:
+                notify(message)
+            except Exception as error:
+                log(f"系统通知发送失败（{type(error).__name__}）")
         if stopped.wait(max(0, INTERVAL_SECONDS - (time.monotonic() - started))):
             return
 
