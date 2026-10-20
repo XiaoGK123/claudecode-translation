@@ -199,9 +199,8 @@ automatically generated turns. Input or configuration errors also block with
 the same message and do not expose error details.
 
 Set `prompt_guard_enabled: false` to disable this guard on its next call.
-The old `prompt_translation_enabled` key remains supported as a compatibility
-alias. If both keys are present in `config.json`, `prompt_guard_enabled` takes
-precedence. Existing configuration files are not rewritten.
+Only `prompt_guard_enabled` controls this check; when omitted it defaults to
+`true`. Existing configuration files are not rewritten.
 The guard is independent of reply translation and the Option+A shortcut. Installation
 uses `onFailure: "block"` to block submission if the hook crashes or times out.
 Use a Claude Code version supporting that field and `suppressOriginalPrompt`,

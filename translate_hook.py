@@ -17,9 +17,6 @@ def configuration():
     path = ROOT / "config.json"
     if path.exists():
         overrides = json.loads(path.read_text(encoding="utf-8"))
-        # Preserve old guard settings before merging the new default key.
-        if "prompt_guard_enabled" not in overrides and "prompt_translation_enabled" in overrides:
-            overrides["prompt_guard_enabled"] = overrides["prompt_translation_enabled"]
         result.update(overrides)
         if "api_provider" not in overrides:
             result["api_provider"] = legacy_provider(result)

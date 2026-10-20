@@ -31,8 +31,8 @@ class PromptHookTests(unittest.TestCase):
             self.assertEqual(handle(self.event("你好！"), {"prompt_guard_enabled": False}), {})
             request.assert_not_called()
 
-    def test_guard_config_defaults_legacy_alias_and_new_key_precedence(self):
-        cases = [({}, True), ({"prompt_translation_enabled": False}, False),
+    def test_only_guard_key_controls_check(self):
+        cases = [({}, True), ({"prompt_translation_enabled": False}, True),
                  ({"prompt_translation_enabled": True}, True),
                  ({"prompt_guard_enabled": False}, False),
                  ({"prompt_guard_enabled": True, "prompt_translation_enabled": False}, True),
