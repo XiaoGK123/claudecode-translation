@@ -136,6 +136,8 @@ class ServiceTests(unittest.TestCase):
                     self.assertEqual(output.read_text(), before)
                     self.assertEqual(len(before.splitlines()), 1)
                     self.assertIn("余额 未配置 API Key", before)
+                    self.assertIn("中文提交检查 已开启", before)
+                    self.assertIn("出口地区监测 已关闭", before)
                     process.send_signal(sig)
                     self.assertEqual(process.wait(timeout=5), 0)
                     self.assertFalse(self.installed())
@@ -146,7 +148,7 @@ class ServiceTests(unittest.TestCase):
                         process.terminate()
                         process.wait(timeout=5)
 
-    def test_only_balance_refreshes_in_same_terminal_line(self):
+    def test_balance_and_switches_refresh_in_same_terminal_line(self):
         requests = []
 
         class Handler(BaseHTTPRequestHandler):
@@ -189,6 +191,20 @@ class ServiceTests(unittest.TestCase):
             self.assertNotIn("service-test-key", text)
             self.assertGreaterEqual(len(requests), 2)
             self.assertTrue(all(path == "/user/balance" for path in requests))
+            self.assertIn("中文提交检查 已开启", text)
+            self.assertIn("出口地区监测 已关闭", text)
+            config["prompt_translation_enabled"] = False
+            (self.root / "config.json").write_text(json.dumps(config))
+            changed = b""
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if select.select([master], [], [], 0.1)[0]:
+                    changed += os.read(master, 65536)
+                if "中文提交检查 已关闭" in changed.decode():
+                    break
+            self.assertIn("中文提交检查 已关闭", changed.decode())
+            self.assertIn("出口地区监测 已关闭", changed.decode())
+            self.assertNotIn("\n", changed.decode())
             process.send_signal(signal.SIGINT)
             self.assertEqual(process.wait(timeout=5), 0)
             self.assertFalse(self.installed())

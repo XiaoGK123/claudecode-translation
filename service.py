@@ -63,6 +63,12 @@ def refresh_interval(config):
     return interval
 
 
+def feature_status(config):
+    prompt = "已开启" if config.get("prompt_translation_enabled", True) else "已关闭"
+    region = "已开启" if config.get("loc_monitor_enabled", True) else "已关闭"
+    return f"中文提交检查 {prompt} | 出口地区监测 {region}"
+
+
 def refresh_balance(stopped, results, interval):
     while not stopped.wait(interval):
         try:
@@ -128,10 +134,12 @@ def run():
                 except Exception as error:
                     prefix += f" | Option+A 未启用：{error}"
             terminal_line = sys.stdout.isatty()
+            switches = feature_status(config)
+            last_switch_check = time.monotonic()
 
             def render(label, initial=False):
                 balance_status = f" | 余额 {label}" if label is not None else ""
-                line = prefix + balance_status + " | 按 Ctrl+C 关闭并删除 Hook"
+                line = prefix + " | " + switches + balance_status + " | 按 Ctrl+C 关闭并删除 Hook"
                 if terminal_line:
                     print("\r\033[2K" + line, end="", flush=True)
                 elif initial:
@@ -142,6 +150,15 @@ def run():
             threading.Thread(target=refresh_balance, args=(stopped, results, interval),
                              daemon=True).start()
             while running:
+                if time.monotonic() - last_switch_check >= 1:
+                    last_switch_check = time.monotonic()
+                    try:
+                        refreshed_switches = feature_status(configuration())
+                    except Exception:
+                        refreshed_switches = "功能开关 配置读取失败"
+                    if refreshed_switches != switches:
+                        switches = refreshed_switches
+                        render(balance)
                 if hotkey_process is not None and hotkey_process.poll() is not None:
                     prefix = prefix.replace("Option+A 已启用", "Option+A 已停止，请重启服务")
                     hotkey_process = None

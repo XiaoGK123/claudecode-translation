@@ -60,7 +60,7 @@ class LocMonitorTests(unittest.TestCase):
             loc_monitor.monitor(stopped, configuration, log)
         self.assertEqual(check.call_count, len(problems))
         self.assertEqual(configuration.call_count, len(problems))
-        self.assertEqual(stopped.wait.call_args_list[0].args, (30,))
+        self.assertEqual(stopped.wait.call_args_list[0].args, (60,))
         return notify, log
 
     def test_every_unhealthy_check_notifies_including_repeated_regions(self):
@@ -126,14 +126,17 @@ class LocMonitorTests(unittest.TestCase):
             listener.accept.return_value = (client, None)
             client.recv.return_value = b"stop\n"
             config = {"settings_file": str(root / "settings.json"), "balance_refresh_seconds": 30,
-                      "model": "test", "input_translation_enabled": False}
+                      "model": "test", "input_translation_enabled": False,
+                      "prompt_translation_enabled": False, "loc_monitor_enabled": True}
             with patch.multiple(service, RUNTIME=root, SOCKET=root / "control.sock", STATE=root / "state.json"), \
                     patch("service.configuration", return_value=config), patch("service.update"), \
                     patch("service.balance_label", return_value=None), patch("service.signal.signal"), \
                     patch("service.socket.socket", return_value=listener), patch("service.os.chmod"), \
                     patch("service.threading.Thread"), patch("service.loc_monitor.start") as start, \
-                    patch("sys.stdout", new_callable=io.StringIO):
+                    patch("sys.stdout", new_callable=io.StringIO) as output:
                 self.assertEqual(service.run(), 0)
+                self.assertIn("中文提交检查 已关闭", output.getvalue())
+                self.assertIn("出口地区监测 已开启", output.getvalue())
             start.assert_called_once()
             self.assertTrue(start.call_args.args[0].is_set())
             self.assertEqual(start.call_args.args[2], root / "loc-monitor.log")
