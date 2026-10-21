@@ -260,6 +260,20 @@ class IntegrationTests(unittest.TestCase):
 
 
 class InstallerTests(unittest.TestCase):
+    def test_reinstall_removes_legacy_failure_block(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            command = [sys.executable, str(ROOT / "install.py"), "--settings", str(path)]
+            subprocess.run(command, check=True, capture_output=True)
+            installed = json.loads(path.read_text())
+            installed["hooks"]["UserPromptSubmit"][0]["hooks"][0]["onFailure"] = "block"
+            path.write_text(json.dumps(installed))
+            subprocess.run(command, check=True, capture_output=True)
+            updated = json.loads(path.read_text())
+            guards = updated["hooks"]["UserPromptSubmit"]
+            self.assertEqual(len(guards), 1)
+            self.assertNotIn("onFailure", guards[0]["hooks"][0])
+
     def test_hook_timeout_read_from_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -293,7 +307,7 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(len(first["hooks"]["MessageDisplay"]), 2)
             self.assertEqual(len(first["hooks"]["UserPromptSubmit"]), 2)
             guard = first["hooks"]["UserPromptSubmit"][-1]["hooks"][0]
-            self.assertEqual(guard["onFailure"], "block")
+            self.assertNotIn("onFailure", guard)
             self.assertNotIn("async", guard)
             self.assertEqual(install(), first)
             self.assertEqual(len(list(Path(directory).glob("*.backup-*"))), 1)

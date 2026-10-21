@@ -35,8 +35,6 @@ def update(settings, remove=False):
                 cleaned.append({**group, "hooks": remaining})
         if not remove:
             entry = {"type": "command", "command": command, "timeout": timeout}
-            if event == "UserPromptSubmit":
-                entry["onFailure"] = "block"
             cleaned.append({"hooks": [entry]})
         if cleaned:
             hooks[event] = cleaned

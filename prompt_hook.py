@@ -28,8 +28,9 @@ def main():
     try:
         output = handle(json.load(sys.stdin), configuration())
     except Exception:
-        # Fail closed without exposing source prompts, configuration, or errors.
-        output = blocked()
+        # Only a successful rule match may block; errors must allow submission.
+        # Do not expose source prompts, configuration, or error details.
+        output = {}
     print(json.dumps(output, ensure_ascii=False))
     return 0
 

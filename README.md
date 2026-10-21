@@ -195,15 +195,15 @@ while `Click "确认"` is allowed because the Chinese is protected and the quote
 are ASCII. The existing Option+A translation still calls the configured API.
 
 The hook runs on every `UserPromptSubmit` event, including scheduled and other
-automatically generated turns. Input or configuration errors also block with
-the same message and do not expose error details.
+automatically generated turns. Input, configuration, or detection errors allow
+submission without exposing error details. Only successful rule matches block.
 
 Set `prompt_guard_enabled: false` to disable this guard on its next call.
 Only `prompt_guard_enabled` controls this check; when omitted it defaults to
 `true`. Existing configuration files are not rewritten.
 The guard is independent of reply translation and the Option+A shortcut. Installation
-uses `onFailure: "block"` to block submission if the hook crashes or times out.
-Use a Claude Code version supporting that field and `suppressOriginalPrompt`,
+does not set `onFailure: "block"`; hook crashes or timeouts do not block submission.
+Use a Claude Code version supporting `suppressOriginalPrompt`,
 and verify both hooks in `/hooks` after restarting the service. The guard leaves
 the source text out of its block message, but Claude Code may still store it in
 local transcripts or prompt history. It does not prevent local storage.
