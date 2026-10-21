@@ -260,6 +260,39 @@ class IntegrationTests(unittest.TestCase):
 
 
 class InstallerTests(unittest.TestCase):
+    def test_backup_retention_and_no_change_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "settings.json"
+            path.write_text('{"permissions": {"allow": ["Read"]}}')
+            unrelated = ("settings.local.json.backup-1", "settings.json.backup-manual",
+                         "settings.json.backup-2.extra", "settings.json.clawd-cleanup.bak")
+            for name in unrelated:
+                (root / name).write_text("keep")
+            (root / "settings.json.backup-0").symlink_to(root / unrelated[0])
+            for index in range(1, 10):
+                (root / f"settings.json.backup-{index}").write_text(str(index))
+            command = [sys.executable, str(ROOT / "install.py"), "--settings", str(path)]
+            subprocess.run(command, check=True, capture_output=True)
+            numeric = lambda: {p.name for p in root.iterdir()
+                               if p.name.startswith("settings.json.backup-")
+                               and p.name.rsplit("-", 1)[-1].isdigit() and not p.is_symlink()}
+            backups = numeric()
+            self.assertEqual(len(backups), 5)
+            for index in range(6, 10):
+                self.assertIn(f"settings.json.backup-{index}", backups)
+            original_settings = path.read_bytes()
+            for index in range(1, 5):
+                (root / f"settings.json.backup-{index}").write_text(str(index))
+            subprocess.run(command, check=True, capture_output=True)
+            self.assertEqual(numeric(), backups)
+            self.assertEqual(path.read_bytes(), original_settings)
+            for name in unrelated:
+                self.assertEqual((root / name).read_text(), "keep")
+            self.assertTrue((root / "settings.json.backup-0").is_symlink())
+            subprocess.run([*command, "--remove"], check=True, capture_output=True)
+            self.assertEqual(len(numeric()), 5)
+
     def test_reinstall_removes_legacy_failure_block(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "settings.json"
@@ -319,10 +352,14 @@ class InstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "settings.json"
             path.write_text("invalid json")
+            backups = [path.with_name(f"settings.json.backup-{i}") for i in range(8)]
+            for backup in backups:
+                backup.write_text("keep")
             run = subprocess.run([sys.executable, str(ROOT / "install.py"),
                                   "--settings", str(path)], capture_output=True)
             self.assertNotEqual(run.returncode, 0)
             self.assertEqual(path.read_text(), "invalid json")
+            self.assertTrue(all(p.read_text() == "keep" for p in backups))
 
 
 if __name__ == "__main__":

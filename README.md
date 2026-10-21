@@ -45,6 +45,11 @@ If an existing Claude session does not recognize the new Hook, restart that sess
 python3 service.py stop
 ```
 
+Settings are backed up only when their contents change. Installation and removal
+retain the five newest `<settings filename>.backup-<timestamp>` files per settings
+file and delete older ones, including on repeated calls that need no changes.
+Other backup names and backups of other settings files are left untouched.
+
 The legacy `start`, `status`, and `stop` commands remain available for compatibility. Running the service directly in the foreground is recommended.
 
 ## Configuration

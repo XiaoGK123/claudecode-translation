@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 import shlex
 import shutil
 import sys
@@ -12,6 +13,23 @@ from pathlib import Path
 from translate_hook import configuration
 
 ROOT = Path(__file__).resolve().parent
+BACKUP_LIMIT = 5
+
+
+def prune_backups(settings):
+    """Keep the newest timestamped backups for this exact settings file."""
+    pattern = re.compile(re.escape(settings.name) + r"\.backup-([0-9]+)\Z")
+    try:
+        backups = []
+        for path in settings.parent.iterdir():
+            match = pattern.fullmatch(path.name)
+            if match and not path.is_symlink() and path.is_file():
+                backups.append((int(match[1]), path))
+        for _, path in sorted(backups, reverse=True)[BACKUP_LIMIT:]:
+            path.unlink()
+    except OSError:
+        # Settings were already saved; retention failures must not break hooks.
+        print("Cannot prune old translator settings backups", file=sys.stderr)
 
 
 def update(settings, remove=False):
@@ -41,6 +59,7 @@ def update(settings, remove=False):
         else:
             hooks.pop(event, None)
     if settings.exists() and data == json.loads(settings.read_text(encoding="utf-8")):
+        prune_backups(settings)
         return settings, None
     settings.parent.mkdir(parents=True, exist_ok=True)
     backup = None
@@ -58,6 +77,7 @@ def update(settings, remove=False):
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+    prune_backups(settings)
     return settings, backup
 
 

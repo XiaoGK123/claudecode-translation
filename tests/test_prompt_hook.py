@@ -62,6 +62,7 @@ class PromptHookTests(unittest.TestCase):
     def test_retry_survives_separate_hook_processes_without_plaintext(self):
         state_dir = str(Path(self.state_directory.name) / "state")
         code = ("import sys; from pathlib import Path; import prompt_hook; "
+                "prompt_hook.configuration = lambda: {'prompt_guard_enabled': True}; "
                 "prompt_hook.STATE_DIR = Path(sys.argv[1]); prompt_hook.main()")
         event = {**self.event("你好\n完全相同"), "session_id": "private-session"}
         results = []
