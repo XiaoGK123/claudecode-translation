@@ -194,6 +194,15 @@ to translate the input. For example, `请点击“确认”` and `Click “确�
 while `Click "确认"` is allowed because the Chinese is protected and the quotes
 are ASCII. The existing Option+A translation still calls the configured API.
 
+After a submission is blocked, sending exactly the same text as the next prompt
+in the same session allows it through once. Whitespace and newlines must also
+match. Any intervening prompt clears or replaces the pending retry; after an
+allowed retry, the next matching submission is checked normally and blocked
+again. Different sessions do not share retries. Without a valid `session_id`,
+the hook checks each submission normally without this retry allowance.
+Retry state is stored in `.runtime/prompt-guard/` using hashes of session IDs
+and blocked prompts, without saving the original text.
+
 The hook runs on every `UserPromptSubmit` event, including scheduled and other
 automatically generated turns. Input, configuration, or detection errors allow
 submission without exposing error details. Only successful rule matches block.

@@ -1,5 +1,6 @@
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -13,8 +14,78 @@ from translate_hook import configuration, ROOT
 
 
 class PromptHookTests(unittest.TestCase):
+    def setUp(self):
+        self.state_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.state_directory.cleanup)
+        state_patch = patch("prompt_hook.STATE_DIR", Path(self.state_directory.name) / "state")
+        state_patch.start()
+        self.addCleanup(state_patch.stop)
+
     def event(self, prompt):
         return {"hook_event_name": "UserPromptSubmit", "prompt": prompt}
+
+    def submit(self, prompt, session="test-session", config=None):
+        return handle({**self.event(prompt), "session_id": session}, config or {})
+
+    def test_exact_retry_allows_once(self):
+        for prompt in ("你好", "！？", "/review 中文"):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(self.submit(prompt)["decision"], "block")
+                self.assertEqual(self.submit(prompt), {})
+                self.assertEqual(self.submit(prompt)["decision"], "block")
+                self.assertEqual(self.submit(prompt), {})
+
+    def test_retry_requires_exact_text_and_consecutive_submission(self):
+        for intervening in ("Hello", "你好 ", "你好\n", "您好", 'Click "确认"'):
+            with self.subTest(intervening=intervening):
+                self.assertEqual(self.submit("你好")["decision"], "block")
+                self.submit(intervening)
+                self.assertEqual(self.submit("你好")["decision"], "block")
+                self.assertEqual(self.submit("你好"), {})
+
+    def test_sessions_are_isolated(self):
+        self.assertEqual(self.submit("你好", "first")["decision"], "block")
+        self.assertEqual(self.submit("你好", "second")["decision"], "block")
+        self.assertEqual(self.submit("你好", "first"), {})
+        self.assertEqual(self.submit("你好", "second"), {})
+
+    def test_missing_session_does_not_share_retries(self):
+        for session in (None, "", 42):
+            for _ in range(2):
+                self.assertEqual(self.submit("你好", session)["decision"], "block")
+
+    def test_disabling_guard_clears_pending_retry(self):
+        self.assertEqual(self.submit("你好")["decision"], "block")
+        self.assertEqual(self.submit("你好", config={"prompt_guard_enabled": False}), {})
+        self.assertEqual(self.submit("你好")["decision"], "block")
+
+    def test_retry_survives_separate_hook_processes_without_plaintext(self):
+        state_dir = str(Path(self.state_directory.name) / "state")
+        code = ("import sys; from pathlib import Path; import prompt_hook; "
+                "prompt_hook.STATE_DIR = Path(sys.argv[1]); prompt_hook.main()")
+        event = {**self.event("你好\n完全相同"), "session_id": "private-session"}
+        results = []
+        for _ in range(3):
+            run = subprocess.run([sys.executable, "-c", code, state_dir],
+                                 input=json.dumps(event), text=True, capture_output=True,
+                                 cwd=ROOT, check=True)
+            results.append(json.loads(run.stdout))
+        self.assertEqual(results[0]["decision"], "block")
+        self.assertEqual(results[1], {})
+        self.assertEqual(results[2]["decision"], "block")
+        state_files = list(Path(state_dir).iterdir())
+        self.assertEqual(len(state_files), 1)
+        self.assertNotIn(event["session_id"], state_files[0].name)
+        self.assertNotIn("你好", state_files[0].read_text())
+        self.assertEqual(state_files[0].stat().st_mode & 0o777, 0o600)
+
+    def test_state_error_allows(self):
+        with patch("sys.stdin", io.StringIO(json.dumps({**self.event("你好"), "session_id": "s"}))), \
+                patch("sys.stdout", new_callable=io.StringIO) as output, \
+                patch("prompt_hook.configuration", return_value={}), \
+                patch("prompt_hook.consume_retry", side_effect=OSError("secret")):
+            self.assertEqual(main(), 0)
+            self.assertEqual(json.loads(output.getvalue()), {})
 
     def test_detection_outside_protection(self):
         for text in ("你好", "Hello，world", "，。！？；：、", "…", "—", "“”", "“你好”", "（！）", "［］", "\U00020000"):
