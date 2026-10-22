@@ -1,10 +1,10 @@
 """Mask paired Chinese passages and Markdown code before input translation."""
 import re
+import math
+import unicodedata
 import uuid
 
-CJK = re.compile(r"[\u3400-\u9fff\uf900-\ufaff\U00020000-\U000323af]")
-# Explicit punctuation set: do not classify all fullwidth characters as Chinese.
-CHINESE_PUNCTUATION = re.compile(r"[，。！？；：、﹑﹔﹕﹖﹗“”‘’「」『』（）【】〔〕《》〈〉…—﹏～·．＂＇［］｛｝]")
+DEFAULT_HAN_RATIO_THRESHOLD = 0.2
 PAIRS = dict(zip('“‘「『（【〔《〈([{', '”’」』）】〕》〉)]}'))
 CLOSERS = set(PAIRS.values())
 
@@ -13,15 +13,33 @@ class PlaceholderError(ValueError):
     """The translated response did not preserve the protected placeholders."""
 
 
+def is_han(char):
+    """Recognize assigned unified/compatibility ideographs in Python's Unicode data."""
+    return unicodedata.name(char, "").startswith(
+        ("CJK UNIFIED IDEOGRAPH-", "CJK COMPATIBILITY IDEOGRAPH-"))
+
+
 def has_chinese(text):
-    """Detect Han characters or configured Chinese punctuation in plain text."""
-    return bool(CJK.search(text) or CHINESE_PUNCTUATION.search(text))
+    """Detect Han ideographs only, excluding punctuation."""
+    return any(is_han(char) for char in text)
 
 
-def needs_translation(text):
-    """Ignore existing protected passages before detecting Chinese input."""
-    masked, _, _ = protect(text)
-    return has_chinese(masked)
+def needs_translation(text, threshold=DEFAULT_HAN_RATIO_THRESHOLD):
+    """Compare unprotected Han / all letters against the inclusive threshold."""
+    if (isinstance(threshold, bool) or not isinstance(threshold, (int, float))
+            or not math.isfinite(threshold) or not 0 <= threshold <= 1):
+        raise ValueError("han_ratio_threshold must be a finite number between 0 and 1")
+    han = letters = previous = 0
+    # Count original text only: placeholder letters must not dilute the ratio.
+    for start, end in protected_spans(text) + [(len(text), len(text))]:
+        for char in text[previous:start]:
+            if is_han(char):
+                han += 1
+                letters += 1
+            elif char.isalpha():
+                letters += 1
+        previous = end
+    return han > 0 and han / letters >= threshold
 
 
 def _escaped(text, index):
@@ -76,7 +94,7 @@ def protected_spans(text):
             if char == '"':
                 if stack and stack[-1][0] == '"':
                     _, start = stack.pop()
-                    if CJK.search(text[start:index + 1]):
+                    if has_chinese(text[start:index + 1]):
                         spans.append((start, index + 1))
                 else:
                     stack.append(('"', index))
@@ -85,7 +103,7 @@ def protected_spans(text):
             elif char in CLOSERS:
                 if stack and stack[-1][0] == char:
                     _, start = stack.pop()
-                    if CJK.search(text[start:index + 1]):
+                    if has_chinese(text[start:index + 1]):
                         # Chinese double quotes remain visible to the translator
                         # so it can normalize them to English punctuation.
                         spans.append((start + 1, index) if text[start] == '“'

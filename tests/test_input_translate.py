@@ -6,11 +6,30 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from input_translate import translate_input
-from input_protection import PAIRS, protect, protected_spans, restore
+from input_protection import PAIRS, has_chinese, needs_translation, protect, protected_spans, restore
 from translate_hook import configuration
 
 
 class InputTranslationTests(unittest.TestCase):
+    def test_shared_ratio_threshold_and_no_api_below_it(self):
+        for threshold, text, expected in ((0.2, '中abcd', True),
+                                          (0.2, '中abcde', False),
+                                          (0.5, '中abcd', False),
+                                          (0.1, '中abcde', True),
+                                          (0.2, 'What’s next?…—。', False),
+                                          (0.2, '中abcd `long English code`', True)):
+            config = {'han_ratio_threshold': threshold, 'input_translation_prompt': 'Translate'}
+            with self.subTest(threshold=threshold, text=text), \
+                    patch('input_translate.translate', side_effect=lambda text, *_: text) as request:
+                self.assertEqual(translate_input(text, config), text)
+                self.assertEqual(request.call_count, int(expected))
+
+    def test_invalid_threshold_fails_before_api(self):
+        with patch('input_translate.translate') as request:
+            with self.assertRaises(ValueError):
+                translate_input('你好', {'han_ratio_threshold': '0.2'})
+            request.assert_not_called()
+
     def test_protected_input_is_masked_and_restored(self):
         original = '请点击“确认”按钮，然后打开—设置页面—'
         reply = 'Click the “确认” button, then open —settings page—.'
@@ -96,6 +115,37 @@ class InputTranslationTests(unittest.TestCase):
 
 
 class InputProtectionTests(unittest.TestCase):
+    def test_han_detection_excludes_punctuation_and_unassigned_points(self):
+        for text in ('中文', '𠮷', '\uf900'):
+            self.assertTrue(has_chinese(text))
+        for text in ('，。！？“”—…·', 'English', 'かな', '\u4dc0', '\U0002ffff'):
+            self.assertFalse(has_chinese(text))
+
+    def test_ratio_boundary_and_nonletters(self):
+        for text, expected in (('中abcd', True), ('中abcde', False),
+                               ('中abcd 123１２３，…🙂', True),
+                               ('中abcde 123，…', False), ('', False),
+                               ('！？', False), ('123', False), ('中', True),
+                               ('中éαбあ', True), ('𠮷abcd', True)):
+            with self.subTest(text=text):
+                self.assertEqual(needs_translation(text), expected)
+
+    def test_protected_text_neither_counts_nor_dilutes_ratio(self):
+        for protected in ('`English中文`', '```\nEnglish中文\n```',
+                          '【很多很多中文】', '“很多很多中文”'):
+            self.assertTrue(needs_translation('中abcd ' + protected))
+            self.assertFalse(needs_translation('abcde ' + protected))
+            self.assertFalse(needs_translation('中abcde ' + protected))
+
+    def test_threshold_validation_and_endpoints(self):
+        for threshold in (-0.1, 1.1, float('nan'), float('inf'), None, '0.2', True, []):
+            with self.subTest(threshold=threshold), self.assertRaises(ValueError):
+                needs_translation('中abcd', threshold)
+        self.assertTrue(needs_translation('中abcde', 0))
+        self.assertFalse(needs_translation('abcde！？', 0))
+        self.assertTrue(needs_translation('中文123。', 1))
+        self.assertFalse(needs_translation('中文a', 1))
+
     def assert_spans(self, text, expected):
         self.assertEqual([text[start:end] for start, end in protected_spans(text)], expected)
 

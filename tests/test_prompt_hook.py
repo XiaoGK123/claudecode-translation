@@ -28,7 +28,7 @@ class PromptHookTests(unittest.TestCase):
         return handle({**self.event(prompt), "session_id": session}, config or {})
 
     def test_exact_retry_allows_once(self):
-        for prompt in ("你好", "！？", "/review 中文"):
+        for prompt in ("你好", "/review 中文"):
             with self.subTest(prompt=prompt):
                 self.assertEqual(self.submit(prompt)["decision"], "block")
                 self.assertEqual(self.submit(prompt), {})
@@ -89,14 +89,34 @@ class PromptHookTests(unittest.TestCase):
             self.assertEqual(json.loads(output.getvalue()), {})
 
     def test_detection_outside_protection(self):
-        for text in ("你好", "Hello，world", "，。！？；：、", "…", "—", "“”", "“你好”", "（！）", "［］", "\U00020000"):
+        for text in ("你好", "帮我 fix bug", "\U00020000"):
             with self.subTest(text=text):
                 self.assertTrue(needs_translation(text))
         for text in ("Hello, world!", "What about the two employee IDs 01458275 and 01448193?",
-                     "", "123", "ABC１２３", 'Click "确认！"',
+                     "", "123", "ABC１２３", "Hello，world", "，。！？；：、", "…", "—", "“”", "“你好”", "（！）", "［］", 'Click "确认！"',
                      '`！`', '```\n，。\n```', '【你好！】'):
             with self.subTest(text=text):
                 self.assertFalse(needs_translation(text))
+
+    def test_configurable_ratio_and_default_inheritance(self):
+        self.assertEqual(handle(self.event('中abcd'), {})['decision'], 'block')
+        self.assertEqual(handle(self.event('中abcde'), {}), {})
+        self.assertEqual(handle(self.event('中abcd'), {'han_ratio_threshold': 0.5}), {})
+        self.assertEqual(handle(self.event('中abcde'), {'han_ratio_threshold': 0.1})['decision'], 'block')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'config.example.json').write_text((ROOT / 'config.example.json').read_text())
+            (root / 'config.json').write_text('{}')
+            with patch('translate_hook.ROOT', root):
+                self.assertEqual(configuration()['han_ratio_threshold'], 0.2)
+            self.assertEqual((root / 'config.json').read_text(), '{}')
+
+    def test_invalid_ratio_allows_submission(self):
+        with patch('sys.stdin', io.StringIO(json.dumps(self.event('你好')))), \
+                patch('sys.stdout', new_callable=io.StringIO) as output, \
+                patch('prompt_hook.configuration', return_value={'han_ratio_threshold': 'bad'}):
+            self.assertEqual(main(), 0)
+            self.assertEqual(json.loads(output.getvalue()), {})
 
     def test_english_and_disabled_skip_api(self):
         with patch("urllib.request.urlopen") as request:
@@ -124,7 +144,7 @@ class PromptHookTests(unittest.TestCase):
                     self.assertEqual((root / "config.json").read_text(), source)
 
     def test_all_blocked_prompts_use_exact_message_without_api(self):
-        for prompt in ("你好", "！？", '请点击“确认”', "/review 中文", "/review ，"):
+        for prompt in ("你好", '请点击“确认”', "/review 中文"):
             with self.subTest(prompt=prompt), patch("translate_hook.translate") as translate, \
                     patch("urllib.request.urlopen") as request:
                 result = handle(self.event(prompt), {})

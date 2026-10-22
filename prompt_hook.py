@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from input_protection import needs_translation
+from input_protection import DEFAULT_HAN_RATIO_THRESHOLD, needs_translation
 from translate_hook import configuration
 
 STATE_DIR = Path(__file__).resolve().parent / ".runtime" / "prompt-guard"
@@ -47,7 +47,8 @@ def handle(event, config):
     prompt = event.get("prompt")
     if not isinstance(prompt, str):
         raise ValueError("expected string prompt")
-    matches = config.get("prompt_guard_enabled", True) and needs_translation(prompt)
+    matches = config.get("prompt_guard_enabled", True) and needs_translation(
+        prompt, config.get("han_ratio_threshold", DEFAULT_HAN_RATIO_THRESHOLD))
     repeated = consume_retry(event.get("session_id"), prompt if matches else None)
     if not matches or repeated:
         return {}
