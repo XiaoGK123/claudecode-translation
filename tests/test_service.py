@@ -15,13 +15,30 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from service import feature_status
+
+
+class ServiceStatusTests(unittest.TestCase):
+    def test_threshold_percentage_display(self):
+        for config, expected in (({}, "20%"), ({"han_ratio_threshold": 0}, "0%"),
+                                 ({"han_ratio_threshold": 1}, "100%"),
+                                 ({"han_ratio_threshold": 0.125}, "12.5%"),
+                                 ({"han_ratio_threshold": 0.29}, "29%")):
+            with self.subTest(config=config):
+                self.assertIn(f"汉字比例阈值 {expected}）", feature_status(config))
+
+    def test_invalid_threshold_display(self):
+        for threshold in (None, "0.2", True, -0.1, 1.1, float('nan'), float('inf')):
+            with self.subTest(threshold=threshold):
+                self.assertIn("汉字比例阈值 配置无效", feature_status({"han_ratio_threshold": threshold}))
 
 
 class ServiceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="translation-")
         self.root = Path(self.temp.name)
-        for name in ("service.py", "hotkey.py", "loc_monitor.py", "balance.py", "translate_hook.py", "install.py", "config.example.json"):
+        for name in ("service.py", "hotkey.py", "loc_monitor.py", "balance.py", "translate_hook.py", "install.py", "config.example.json", "input_protection.py"):
             shutil.copy2(ROOT / name, self.root)
         shutil.copytree(ROOT / "providers", self.root / "providers")
         self.settings = self.root / "claude-settings.json"
@@ -192,18 +209,21 @@ class ServiceTests(unittest.TestCase):
             self.assertGreaterEqual(len(requests), 2)
             self.assertTrue(all(path == "/user/balance" for path in requests))
             self.assertIn("中文提交检查 已开启", text)
+            self.assertIn("汉字比例阈值 20%", text)
             self.assertIn("出口地区监测 已关闭", text)
-            config["prompt_guard_enabled"] = False
+            config["loc_monitor_enabled"] = True
+            config["han_ratio_threshold"] = 0.35
             (self.root / "config.json").write_text(json.dumps(config))
             changed = b""
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
                 if select.select([master], [], [], 0.1)[0]:
                     changed += os.read(master, 65536)
-                if "中文提交检查 已关闭" in changed.decode():
+                if "汉字比例阈值 35%" in changed.decode():
                     break
-            self.assertIn("中文提交检查 已关闭", changed.decode())
-            self.assertIn("出口地区监测 已关闭", changed.decode())
+            self.assertIn("中文提交检查 已开启", changed.decode())
+            self.assertIn("汉字比例阈值 35%", changed.decode())
+            self.assertIn("出口地区监测 已开启", changed.decode())
             self.assertNotIn("\n", changed.decode())
             process.send_signal(signal.SIGINT)
             self.assertEqual(process.wait(timeout=5), 0)

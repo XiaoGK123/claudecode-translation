@@ -19,6 +19,7 @@ from balance import balance_label
 from translate_hook import configuration
 import hotkey
 import loc_monitor
+from input_protection import DEFAULT_HAN_RATIO_THRESHOLD
 
 ROOT = Path(__file__).resolve().parent
 RUNTIME = ROOT / ".runtime"
@@ -64,9 +65,14 @@ def refresh_interval(config):
 
 
 def feature_status(config):
-    prompt = "已开启" if config.get("prompt_guard_enabled", True) else "已关闭"
+    threshold = config.get("han_ratio_threshold", DEFAULT_HAN_RATIO_THRESHOLD)
+    if (isinstance(threshold, bool) or not isinstance(threshold, (int, float))
+            or not 0 <= threshold <= 1):
+        ratio = "配置无效"
+    else:
+        ratio = f"{threshold * 100:.10f}".rstrip("0").rstrip(".") + "%"
     region = "已开启" if config.get("loc_monitor_enabled", True) else "已关闭"
-    return f"中文提交检查 {prompt} | 出口地区监测 {region}"
+    return f"中文提交检查 已开启（汉字比例阈值 {ratio}） | 出口地区监测 {region}"
 
 
 def refresh_balance(stopped, results, interval):

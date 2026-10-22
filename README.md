@@ -26,10 +26,11 @@ On the first run, the service creates `config.json` with permissions `600` and e
 
 The service stays in the current terminal, registers the Hook automatically, and refreshes the balance on the same status line. By default, it updates `~/.claude/settings.json`, applying to all Claude projects. To use it for a single project, set `settings_file` to the absolute path of that project's `.claude/settings.local.json`.
 
-The status line also shows whether submitted prompt checking
-(`prompt_guard_enabled`) and egress region monitoring (`loc_monitor_enabled`)
-are enabled. In an interactive terminal, these switch indicators refresh within
-about one second after configuration changes; region checks run every 60 seconds.
+The status line shows submitted prompt checking as always enabled, its Han ratio
+threshold (for example, `汉字比例阈值 20%`), and the current egress region monitoring
+state (`loc_monitor_enabled`). In an interactive terminal, the threshold and region
+switch indicator refresh within about one second after configuration changes;
+region checks run every 60 seconds. An invalid threshold displays `汉字比例阈值 配置无效`.
 
 Run `claude` in your target project and use `/hooks` to confirm that `MessageDisplay` is registered. Try this prompt:
 
@@ -78,7 +79,7 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 | `balance_timeout_seconds` | `3` | Balance query timeout |
 | `balance_refresh_seconds` | `30` | Balance refresh interval, at least 0.2 seconds |
 | `input_translation_enabled` | `true` | Enable Option+A input translation |
-| `prompt_guard_enabled` | `true` | Block submissions containing unprotected Han characters or Chinese punctuation without calling the translation API |
+| `han_ratio_threshold` | `0.2` | Han / all letters outside protected passages; inclusive threshold from 0 to 1, shared by the guard and input translation |
 | `loc_monitor_enabled` | `true` | Enable background Claude web egress region checks and macOS notifications |
 | `expected_loc` | `SG` | Expected two-letter region code from the Claude trace endpoint; case-insensitive |
 
@@ -182,22 +183,27 @@ same route is used by a browser or a separate Claude API request.
 ## Submitted Prompt Guard
 
 The service and manual installer also register a synchronous `UserPromptSubmit`
-hook. With `prompt_guard_enabled: true` (the default), Han characters or
-Chinese punctuation outside protected passages block submission. This includes
-punctuation-only input such as `！？`, `，。`, and `“”`. ASCII punctuation, digits,
-and fullwidth letters/digits alone do not trigger the guard. The punctuation set
-is explicit in `input_protection.py`; shared marks such as `…`, `—`, and `·` also
-trigger it. Paired passages need Han characters to be protected, while backtick code is
-always protected. For Chinese double quotes `“…”`, only the contents are
-protected; the quotes remain subject to translation and submission checks.
+hook. Submitted prompt checking is always enabled. Submission is blocked
+when the unprotected Han ratio is at least `han_ratio_threshold` (default `0.2`).
+The ratio is Han characters divided by all letters (Han plus other alphabetic
+characters), counted per character, not per word. Spaces, punctuation, digits,
+and symbols do not count. At least one Han character is required, even with a
+threshold of `0`. A threshold of `1` matches only all-Han letters.
+
+Protected passages and code are excluded from both counts; generated placeholder
+letters never enter the denominator. Paired passages need Han characters to be
+protected, while backtick code is always protected. For Chinese double quotes
+`“…”`, only the contents are protected. The quotes do not affect the ratio.
+Han detection uses unified and compatibility ideograph names in the running
+Python version's Unicode database, excluding unassigned code points. It detects
+Han script, including Han used in Japanese, rather than identifying a language.
 
 The hook checks input locally and never calls the translation API. Every blocked
-submission, including punctuation-only input and `/commands` with unprotected
-Chinese, shows exactly `检测到未受保护的中文片段`. It does not offer a translation,
-replace the prompt, or submit automatically. Use Option+A separately if you want
-to translate the input. For example, `请点击“确认”` and `Click “确认”` are blocked,
-while `Click "确认"` is allowed because the Chinese is protected and the quotes
-are ASCII. The existing Option+A translation still calls the configured API.
+submission shows exactly `检测到未受保护的中文片段`. It does not offer a translation,
+replace the prompt, or submit automatically. Use Option+A separately to translate
+input meeting the same threshold. For example, `中abcd` (20%) and `请点击“确认”`
+(100% outside protection) are blocked, while `中abcde` (about 16.7%), `！？`,
+`What’s next?`, and `Click “确认”` are allowed.
 
 After a submission is blocked, sending exactly the same text as the next prompt
 in the same session allows it through once. Whitespace and newlines must also
@@ -212,9 +218,8 @@ The hook runs on every `UserPromptSubmit` event, including scheduled and other
 automatically generated turns. Input, configuration, or detection errors allow
 submission without exposing error details. Only successful rule matches block.
 
-Set `prompt_guard_enabled: false` to disable this guard on its next call.
-Only `prompt_guard_enabled` controls this check; when omitted it defaults to
-`true`. Existing configuration files are not rewritten.
+The former `prompt_guard_enabled` setting has been removed; any value left in
+an existing configuration is ignored. Existing configuration files inherit `han_ratio_threshold: 0.2` without being rewritten. Changes to the threshold apply on the next call. Non-numeric, boolean, non-finite, or out-of-range thresholds cause the guard to allow submission and input translation to fail for original-text recovery.
 The guard is independent of reply translation and the Option+A shortcut. Installation
 does not set `onFailure: "block"`; hook crashes or timeouts do not block submission.
 Use a Claude Code version supporting `suppressOriginalPrompt`,
@@ -228,7 +233,7 @@ Place the cursor in an input field and press **⌥A**. The helper translates the
 
 Input translation protects Chinese inside `“…”`, `‘…’`, `「…」`, `『…』`, `（…）`, `【…】`, `〔…〕`, `《…》`, `〈…〉`, `(...)`, `[...]`, `{...}`, and `"..."` locally before calling the API. For `“…”`, only the contents are replaced with a unique placeholder and restored verbatim; the outer quotes are sent to the translator for conversion to English punctuation. Other supported pairs protect the entire passage, including delimiters. Nested and multiline passages are supported; the outermost matching passage is protected. Ordinary unclosed or mismatched delimiters do not protect an outer passage, but valid inner passages can still be protected. Backslash-escaped delimiters are treated as literal text. English single quotes and paired dashes are not protected.
 
-Backtick inline code (including multiple-backtick delimiters) and backtick fenced code blocks are always protected, even without Chinese. An unclosed fenced block is protected through the end of the input; an unclosed inline backtick is treated as ordinary text. If all Han characters and Chinese punctuation are already protected, the original input is returned without an API call. Otherwise, the configured input prompt is supplemented with instructions to preserve placeholders. Missing, modified, duplicated, or invented placeholders fail translation with `PlaceholderError`, allowing the shortcut helper to attempt original-text recovery. Protected contents are never sent to the translation API.
+Backtick inline code (including multiple-backtick delimiters) and backtick fenced code blocks are always protected, even without Chinese. An unclosed fenced block is protected through the end of the input; an unclosed inline backtick is treated as ordinary text. Input translation uses the same `han_ratio_threshold` rule as the guard. If there are no unprotected Han characters or the ratio is below the threshold, the original input is returned without an API call. Otherwise, the configured input prompt is supplemented with instructions to preserve placeholders. Missing, modified, duplicated, or invented placeholders fail translation with `PlaceholderError`, allowing the shortcut helper to attempt original-text recovery. Protected contents are never sent to the translation API.
 
 On first launch, the service compiles the Swift helper and requests macOS Accessibility permission. Follow the prompts to allow the terminal running the service and the native helper. Grant Input Monitoring permission if requested, then restart the service. Reply translation remains available if shortcut permissions are missing.
 

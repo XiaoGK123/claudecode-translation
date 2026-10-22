@@ -108,12 +108,14 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(run.stderr, "")
             return json.loads(run.stdout)
 
-        for prompt in ("！？", "你好", "/review 中文", '“你好”'):
+        for prompt in ("你好", "/review 中文"):
             with self.subTest(prompt=prompt):
                 result = submit(prompt)
                 self.assertEqual(result["decision"], "block")
                 self.assertEqual(result["reason"], "检测到未受保护的中文片段")
-        self.assertEqual(submit("!?"), {})
+        for prompt in ("!?", "！？", '“你好”', "Fix this function。", "中abcde"):
+            self.assertEqual(submit(prompt), {})
+        self.assertEqual(submit("中abcd")["decision"], "block")
         self.assertEqual(submit('Click "确认！"'), {})
         self.assertEqual(self.requests, [])
 

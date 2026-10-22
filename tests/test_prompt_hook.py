@@ -28,7 +28,7 @@ class PromptHookTests(unittest.TestCase):
         return handle({**self.event(prompt), "session_id": session}, config or {})
 
     def test_exact_retry_allows_once(self):
-        for prompt in ("你好", "！？", "/review 中文"):
+        for prompt in ("你好", "/review 中文"):
             with self.subTest(prompt=prompt):
                 self.assertEqual(self.submit(prompt)["decision"], "block")
                 self.assertEqual(self.submit(prompt), {})
@@ -54,15 +54,15 @@ class PromptHookTests(unittest.TestCase):
             for _ in range(2):
                 self.assertEqual(self.submit("你好", session)["decision"], "block")
 
-    def test_disabling_guard_clears_pending_retry(self):
+    def test_below_threshold_submission_clears_pending_retry(self):
         self.assertEqual(self.submit("你好")["decision"], "block")
-        self.assertEqual(self.submit("你好", config={"prompt_guard_enabled": False}), {})
+        self.assertEqual(self.submit("Hello"), {})
         self.assertEqual(self.submit("你好")["decision"], "block")
 
     def test_retry_survives_separate_hook_processes_without_plaintext(self):
         state_dir = str(Path(self.state_directory.name) / "state")
         code = ("import sys; from pathlib import Path; import prompt_hook; "
-                "prompt_hook.configuration = lambda: {'prompt_guard_enabled': True}; "
+                "prompt_hook.configuration = lambda: {}; "
                 "prompt_hook.STATE_DIR = Path(sys.argv[1]); prompt_hook.main()")
         event = {**self.event("你好\n完全相同"), "session_id": "private-session"}
         results = []
@@ -89,42 +89,60 @@ class PromptHookTests(unittest.TestCase):
             self.assertEqual(json.loads(output.getvalue()), {})
 
     def test_detection_outside_protection(self):
-        for text in ("你好", "Hello，world", "，。！？；：、", "…", "—", "“”", "“你好”", "（！）", "［］", "\U00020000"):
+        for text in ("你好", "帮我 fix bug", "\U00020000"):
             with self.subTest(text=text):
                 self.assertTrue(needs_translation(text))
         for text in ("Hello, world!", "What about the two employee IDs 01458275 and 01448193?",
-                     "", "123", "ABC１２３", 'Click "确认！"',
+                     "", "123", "ABC１２３", "Hello，world", "，。！？；：、", "…", "—", "“”", "“你好”", "（！）", "［］", 'Click "确认！"',
                      '`！`', '```\n，。\n```', '【你好！】'):
             with self.subTest(text=text):
                 self.assertFalse(needs_translation(text))
 
-    def test_english_and_disabled_skip_api(self):
+    def test_configurable_ratio_and_default_inheritance(self):
+        self.assertEqual(handle(self.event('中abcd'), {})['decision'], 'block')
+        self.assertEqual(handle(self.event('中abcde'), {}), {})
+        self.assertEqual(handle(self.event('中abcd'), {'han_ratio_threshold': 0.5}), {})
+        self.assertEqual(handle(self.event('中abcde'), {'han_ratio_threshold': 0.1})['decision'], 'block')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'config.example.json').write_text((ROOT / 'config.example.json').read_text())
+            (root / 'config.json').write_text('{}')
+            with patch('translate_hook.ROOT', root):
+                self.assertEqual(configuration()['han_ratio_threshold'], 0.2)
+            self.assertEqual((root / 'config.json').read_text(), '{}')
+
+    def test_invalid_ratio_allows_submission(self):
+        with patch('sys.stdin', io.StringIO(json.dumps(self.event('你好')))), \
+                patch('sys.stdout', new_callable=io.StringIO) as output, \
+                patch('prompt_hook.configuration', return_value={'han_ratio_threshold': 'bad'}):
+            self.assertEqual(main(), 0)
+            self.assertEqual(json.loads(output.getvalue()), {})
+
+    def test_english_and_protected_input_skip_api(self):
         with patch("urllib.request.urlopen") as request:
             self.assertEqual(handle(self.event('Click "确认"'), {}), {})
-            self.assertEqual(handle(self.event("你好！"), {"prompt_guard_enabled": False}), {})
+            self.assertEqual(handle(self.event("What’s next?"), {}), {})
             request.assert_not_called()
 
-    def test_only_guard_key_controls_check(self):
-        cases = [({}, True), ({"prompt_translation_enabled": False}, True),
-                 ({"prompt_translation_enabled": True}, True),
-                 ({"prompt_guard_enabled": False}, False),
-                 ({"prompt_guard_enabled": True, "prompt_translation_enabled": False}, True),
-                 ({"prompt_guard_enabled": False, "prompt_translation_enabled": True}, False)]
+    def test_retired_switch_cannot_disable_check(self):
+        cases = [{}, {"prompt_guard_enabled": False}, {"prompt_guard_enabled": True},
+                 {"prompt_translation_enabled": False},
+                 {"enabled": False, "input_translation_enabled": False}]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "config.example.json").write_text((ROOT / "config.example.json").read_text())
-            for overrides, expected in cases:
+            for overrides in cases:
                 with self.subTest(overrides=overrides), patch("translate_hook.ROOT", root):
                     source = json.dumps(overrides)
                     (root / "config.json").write_text(source)
                     config = configuration()
-                    self.assertIs(config["prompt_guard_enabled"], expected)
-                    result = handle(self.event("你好"), config)
-                    self.assertEqual(result.get("decision") == "block", expected)
+                    self.assertNotIn("prompt_guard_enabled", config)
+                    self.assertEqual(handle(self.event("你好"), config)["decision"], "block")
+                    self.assertEqual(handle(self.event("你好"), overrides)["decision"], "block")
                     self.assertEqual((root / "config.json").read_text(), source)
 
     def test_all_blocked_prompts_use_exact_message_without_api(self):
-        for prompt in ("你好", "！？", '请点击“确认”', "/review 中文", "/review ，"):
+        for prompt in ("你好", '请点击“确认”', "/review 中文"):
             with self.subTest(prompt=prompt), patch("translate_hook.translate") as translate, \
                     patch("urllib.request.urlopen") as request:
                 result = handle(self.event(prompt), {})
