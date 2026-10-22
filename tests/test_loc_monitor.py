@@ -129,13 +129,17 @@ class LocMonitorTests(unittest.TestCase):
                       "model": "test", "input_translation_enabled": False,
                       "prompt_guard_enabled": False, "loc_monitor_enabled": True}
             with patch.multiple(service, RUNTIME=root, SOCKET=root / "control.sock", STATE=root / "state.json"), \
-                    patch("service.configuration", return_value=config), patch("service.update"), \
+                    patch("service.configuration", side_effect=[config, config, {**config, "han_ratio_threshold": 0.35}]), patch("service.update"), \
                     patch("service.balance_label", return_value=None), patch("service.signal.signal"), \
                     patch("service.socket.socket", return_value=listener), patch("service.os.chmod"), \
                     patch("service.threading.Thread"), patch("service.loc_monitor.start") as start, \
-                    patch("sys.stdout", new_callable=io.StringIO) as output:
-                self.assertEqual(service.run(), 0)
+                    patch("sys.stdout", new_callable=io.StringIO) as output, \
+                    patch("service.time.monotonic", side_effect=[0, 2, 2]):
+                with patch.object(output, "isatty", return_value=True):
+                    self.assertEqual(service.run(), 0)
                 self.assertIn("中文提交检查 已开启", output.getvalue())
+                self.assertIn("汉字比例阈值 20%", output.getvalue())
+                self.assertIn("汉字比例阈值 35%", output.getvalue())
                 self.assertIn("出口地区监测 已开启", output.getvalue())
             start.assert_called_once()
             self.assertTrue(start.call_args.args[0].is_set())

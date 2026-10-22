@@ -26,10 +26,11 @@ On the first run, the service creates `config.json` with permissions `600` and e
 
 The service stays in the current terminal, registers the Hook automatically, and refreshes the balance on the same status line. By default, it updates `~/.claude/settings.json`, applying to all Claude projects. To use it for a single project, set `settings_file` to the absolute path of that project's `.claude/settings.local.json`.
 
-The status line shows submitted prompt checking as always enabled and the current
-egress region monitoring state (`loc_monitor_enabled`). In an interactive terminal,
-the region switch indicator refreshes within about one second after configuration
-changes; region checks run every 60 seconds.
+The status line shows submitted prompt checking as always enabled, its Han ratio
+threshold (for example, `汉字比例阈值 20%`), and the current egress region monitoring
+state (`loc_monitor_enabled`). In an interactive terminal, the threshold and region
+switch indicator refresh within about one second after configuration changes;
+region checks run every 60 seconds. An invalid threshold displays `汉字比例阈值 配置无效`.
 
 Run `claude` in your target project and use `/hooks` to confirm that `MessageDisplay` is registered. Try this prompt:
 
