@@ -135,7 +135,7 @@ class LocMonitorTests(unittest.TestCase):
                     patch("service.threading.Thread"), patch("service.loc_monitor.start") as start, \
                     patch("sys.stdout", new_callable=io.StringIO) as output:
                 self.assertEqual(service.run(), 0)
-                self.assertIn("中文提交检查 已关闭", output.getvalue())
+                self.assertIn("中文提交检查 已开启", output.getvalue())
                 self.assertIn("出口地区监测 已开启", output.getvalue())
             start.assert_called_once()
             self.assertTrue(start.call_args.args[0].is_set())

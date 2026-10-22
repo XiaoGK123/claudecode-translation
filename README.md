@@ -26,10 +26,10 @@ On the first run, the service creates `config.json` with permissions `600` and e
 
 The service stays in the current terminal, registers the Hook automatically, and refreshes the balance on the same status line. By default, it updates `~/.claude/settings.json`, applying to all Claude projects. To use it for a single project, set `settings_file` to the absolute path of that project's `.claude/settings.local.json`.
 
-The status line also shows whether submitted prompt checking
-(`prompt_guard_enabled`) and egress region monitoring (`loc_monitor_enabled`)
-are enabled. In an interactive terminal, these switch indicators refresh within
-about one second after configuration changes; region checks run every 60 seconds.
+The status line shows submitted prompt checking as always enabled and the current
+egress region monitoring state (`loc_monitor_enabled`). In an interactive terminal,
+the region switch indicator refreshes within about one second after configuration
+changes; region checks run every 60 seconds.
 
 Run `claude` in your target project and use `/hooks` to confirm that `MessageDisplay` is registered. Try this prompt:
 
@@ -79,7 +79,6 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 | `balance_refresh_seconds` | `30` | Balance refresh interval, at least 0.2 seconds |
 | `input_translation_enabled` | `true` | Enable Option+A input translation |
 | `han_ratio_threshold` | `0.2` | Han / all letters outside protected passages; inclusive threshold from 0 to 1, shared by the guard and input translation |
-| `prompt_guard_enabled` | `true` | Block submissions at or above `han_ratio_threshold` without calling the translation API |
 | `loc_monitor_enabled` | `true` | Enable background Claude web egress region checks and macOS notifications |
 | `expected_loc` | `SG` | Expected two-letter region code from the Claude trace endpoint; case-insensitive |
 
@@ -183,7 +182,7 @@ same route is used by a browser or a separate Claude API request.
 ## Submitted Prompt Guard
 
 The service and manual installer also register a synchronous `UserPromptSubmit`
-hook. With `prompt_guard_enabled: true` (the default), submission is blocked
+hook. Submitted prompt checking is always enabled. Submission is blocked
 when the unprotected Han ratio is at least `han_ratio_threshold` (default `0.2`).
 The ratio is Han characters divided by all letters (Han plus other alphabetic
 characters), counted per character, not per word. Spaces, punctuation, digits,
@@ -218,9 +217,8 @@ The hook runs on every `UserPromptSubmit` event, including scheduled and other
 automatically generated turns. Input, configuration, or detection errors allow
 submission without exposing error details. Only successful rule matches block.
 
-Set `prompt_guard_enabled: false` to disable this guard on its next call.
-Only `prompt_guard_enabled` controls this check; when omitted it defaults to
-`true`. Existing configuration files inherit `han_ratio_threshold: 0.2` without being rewritten. Changes to the threshold apply on the next call. Non-numeric, boolean, non-finite, or out-of-range thresholds cause the guard to allow submission and input translation to fail for original-text recovery.
+The former `prompt_guard_enabled` setting has been removed; any value left in
+an existing configuration is ignored. Existing configuration files inherit `han_ratio_threshold: 0.2` without being rewritten. Changes to the threshold apply on the next call. Non-numeric, boolean, non-finite, or out-of-range thresholds cause the guard to allow submission and input translation to fail for original-text recovery.
 The guard is independent of reply translation and the Option+A shortcut. Installation
 does not set `onFailure: "block"`; hook crashes or timeouts do not block submission.
 Use a Claude Code version supporting `suppressOriginalPrompt`,

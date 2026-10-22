@@ -193,17 +193,17 @@ class ServiceTests(unittest.TestCase):
             self.assertTrue(all(path == "/user/balance" for path in requests))
             self.assertIn("中文提交检查 已开启", text)
             self.assertIn("出口地区监测 已关闭", text)
-            config["prompt_guard_enabled"] = False
+            config["loc_monitor_enabled"] = True
             (self.root / "config.json").write_text(json.dumps(config))
             changed = b""
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
                 if select.select([master], [], [], 0.1)[0]:
                     changed += os.read(master, 65536)
-                if "中文提交检查 已关闭" in changed.decode():
+                if "出口地区监测 已开启" in changed.decode():
                     break
-            self.assertIn("中文提交检查 已关闭", changed.decode())
-            self.assertIn("出口地区监测 已关闭", changed.decode())
+            self.assertIn("中文提交检查 已开启", changed.decode())
+            self.assertIn("出口地区监测 已开启", changed.decode())
             self.assertNotIn("\n", changed.decode())
             process.send_signal(signal.SIGINT)
             self.assertEqual(process.wait(timeout=5), 0)

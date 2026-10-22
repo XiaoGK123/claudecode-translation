@@ -64,9 +64,8 @@ def refresh_interval(config):
 
 
 def feature_status(config):
-    prompt = "已开启" if config.get("prompt_guard_enabled", True) else "已关闭"
     region = "已开启" if config.get("loc_monitor_enabled", True) else "已关闭"
-    return f"中文提交检查 {prompt} | 出口地区监测 {region}"
+    return f"中文提交检查 已开启 | 出口地区监测 {region}"
 
 
 def refresh_balance(stopped, results, interval):

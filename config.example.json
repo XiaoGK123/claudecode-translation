@@ -17,7 +17,6 @@
   "balance_timeout_seconds": 3,
   "balance_refresh_seconds": 30,
   "input_translation_enabled": true,
-  "prompt_guard_enabled": true,
   "han_ratio_threshold": 0.2,
   "loc_monitor_enabled": true,
   "expected_loc": "SG",

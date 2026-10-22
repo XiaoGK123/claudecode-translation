@@ -47,7 +47,7 @@ def handle(event, config):
     prompt = event.get("prompt")
     if not isinstance(prompt, str):
         raise ValueError("expected string prompt")
-    matches = config.get("prompt_guard_enabled", True) and needs_translation(
+    matches = needs_translation(
         prompt, config.get("han_ratio_threshold", DEFAULT_HAN_RATIO_THRESHOLD))
     repeated = consume_retry(event.get("session_id"), prompt if matches else None)
     if not matches or repeated:
