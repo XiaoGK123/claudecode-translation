@@ -1,4 +1,5 @@
 import json
+import fcntl
 import os
 import pty
 import re
@@ -6,9 +7,11 @@ import select
 import shutil
 import signal
 import subprocess
+import struct
 import sys
 import tempfile
 import threading
+import termios
 import time
 import unittest
 from pathlib import Path
@@ -16,10 +19,33 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from service import feature_status
+from service import feature_status, fit_status_line
 
 
 class ServiceStatusTests(unittest.TestCase):
+    def test_status_fits_terminal_cells_including_chinese(self):
+        self.assertEqual(fit_status_line('中文abcd', 6), '中文…')
+        self.assertEqual(fit_status_line('中文abcd', 9), '中文abcd')
+        self.assertEqual(fit_status_line('abcdef', 6), 'abcd…')
+        self.assertEqual(fit_status_line('e\u0301abc', 5), 'e\u0301abc')
+        for columns in (0, 1):
+            self.assertEqual(fit_status_line('中文', columns), '')
+        self.assertEqual(fit_status_line('中文', 2), '…')
+
+    def test_status_cannot_inject_newlines_or_terminal_controls(self):
+        self.assertEqual(fit_status_line('model\nname\r\t\x1b', 80), 'model name   ')
+
+    def test_screenshot_sized_status_and_window_resize(self):
+        text = ('服务运行中 | Hook 已安装 | 模型 deepseek-flash | Option+A 已启用 | '
+                + feature_status({}) + ' | 余额 7.02 CNY | 按 Ctrl+C 关闭并删除 Hook')
+        for columns in (160, 80, 40):
+            line = fit_status_line(text, columns)
+            # These status strings contain ASCII, wide Chinese, and the ellipsis.
+            cells = sum(2 if '\u3000' <= char <= '\uffef' else 1 for char in line)
+            self.assertLess(cells, columns)
+            self.assertTrue(line.endswith('…'))
+        self.assertEqual(fit_status_line(text, 400), text)
+
     def test_threshold_percentage_display(self):
         for config, expected in (({}, "20%"), ({"han_ratio_threshold": 0}, "0%"),
                                  ({"han_ratio_threshold": 1}, "100%"),
@@ -189,6 +215,7 @@ class ServiceTests(unittest.TestCase):
                   "balance_refresh_seconds": 0.2, "balance_timeout_seconds": 0.5}
         (self.root / "config.json").write_text(json.dumps(config))
         master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 400, 0, 0))
         process = subprocess.Popen([sys.executable, str(self.root / "service.py")],
                                    stdout=slave, stderr=slave)
         os.close(slave)
