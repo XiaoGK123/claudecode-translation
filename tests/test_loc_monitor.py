@@ -1,4 +1,5 @@
 import io
+import os
 import sys
 import tempfile
 import threading
@@ -134,6 +135,7 @@ class LocMonitorTests(unittest.TestCase):
                     patch("service.socket.socket", return_value=listener), patch("service.os.chmod"), \
                     patch("service.threading.Thread"), patch("service.loc_monitor.start") as start, \
                     patch("sys.stdout", new_callable=io.StringIO) as output, \
+                    patch("service.shutil.get_terminal_size", return_value=os.terminal_size((240, 24))), \
                     patch("service.time.monotonic", side_effect=[0, 2, 2]):
                 with patch.object(output, "isatty", return_value=True):
                     self.assertEqual(service.run(), 0)

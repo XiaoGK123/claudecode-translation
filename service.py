@@ -6,12 +6,14 @@ import json
 import math
 import os
 import queue
+import shutil
 import signal
 import socket
 import subprocess
 import sys
 import threading
 import time
+import unicodedata
 from pathlib import Path
 
 from install import update
@@ -73,6 +75,28 @@ def feature_status(config):
         ratio = f"{threshold * 100:.10f}".rstrip("0").rstrip(".") + "%"
     region = "已开启" if config.get("loc_monitor_enabled", True) else "已关闭"
     return f"中文提交检查 已开启（汉字比例阈值 {ratio}） | 出口地区监测 {region}"
+
+
+def fit_status_line(text, columns):
+    """Stay short of the right margin so refreshes cannot leave wrapped rows."""
+    text = "".join(" " if unicodedata.category(char).startswith("C") else char
+                   for char in text)
+    limit = max(0, columns - 1)
+    widths = [0 if unicodedata.combining(char) else
+              2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+              for char in text]
+    if sum(widths) <= limit:
+        return text
+    if limit == 0:
+        return ""
+    used = 0
+    result = []
+    for char, width in zip(text, widths):
+        if used + width > limit - 1:
+            break
+        result.append(char)
+        used += width
+    return "".join(result) + "…"
 
 
 def refresh_balance(stopped, results, interval):
@@ -147,6 +171,11 @@ def run():
                 balance_status = f" | 余额 {label}" if label is not None else ""
                 line = prefix + " | " + switches + balance_status + " | 按 Ctrl+C 关闭并删除 Hook"
                 if terminal_line:
+                    try:
+                        columns = os.get_terminal_size(sys.stdout.fileno()).columns
+                    except (AttributeError, OSError, ValueError):
+                        columns = shutil.get_terminal_size().columns
+                    line = fit_status_line(line, columns)
                     print("\r\033[2K" + line, end="", flush=True)
                 elif initial:
                     print(line, flush=True)
