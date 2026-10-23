@@ -1,14 +1,12 @@
 """Translate input to English while preserving Chinese in paired delimiters."""
 import sys
 
-from input_protection import DEFAULT_HAN_RATIO_THRESHOLD, needs_translation, protect, restore
+from input_protection import protect, restore
 from translate_hook import configuration, translate, translation_prompt
 
 
 
 def translate_input(text, config):
-    if not needs_translation(text, config.get("han_ratio_threshold", DEFAULT_HAN_RATIO_THRESHOLD)):
-        return text
     masked, replacements, prefix = protect(text)
     prompt = translation_prompt(config, "input_translation_prompt")
     if replacements:
