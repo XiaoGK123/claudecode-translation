@@ -11,24 +11,15 @@ from translate_hook import configuration
 
 
 class InputTranslationTests(unittest.TestCase):
-    def test_shared_ratio_threshold_and_no_api_below_it(self):
-        for threshold, text, expected in ((0.2, '中abcd', True),
-                                          (0.2, '中abcde', False),
-                                          (0.5, '中abcd', False),
-                                          (0.1, '中abcde', True),
-                                          (0.2, 'What’s next?…—。', False),
-                                          (0.2, '中abcd `long English code`', True)):
-            config = {'han_ratio_threshold': threshold, 'input_translation_prompt': 'Translate'}
-            with self.subTest(threshold=threshold, text=text), \
-                    patch('input_translate.translate', side_effect=lambda text, *_: text) as request:
-                self.assertEqual(translate_input(text, config), text)
-                self.assertEqual(request.call_count, int(expected))
-
-    def test_invalid_threshold_fails_before_api(self):
-        with patch('input_translate.translate') as request:
-            with self.assertRaises(ValueError):
-                translate_input('你好', {'han_ratio_threshold': '0.2'})
-            request.assert_not_called()
+    def test_always_calls_api_regardless_of_language_or_threshold(self):
+        for text in ('中abcd', '中abcde', 'Hello, world!', 'What’s next?…—。',
+                     '！？', '12345', 'こんにちは', 'bonjour'):
+            for threshold in (0.2, 1, 'invalid'):
+                config = {'han_ratio_threshold': threshold, 'input_translation_prompt': 'Translate'}
+                with self.subTest(threshold=threshold, text=text), \
+                        patch('input_translate.translate', return_value='English result') as request:
+                    self.assertEqual(translate_input(text, config), 'English result')
+                    request.assert_called_once_with(text, config, 'Translate')
 
     def test_protected_input_is_masked_and_restored(self):
         original = '请点击“确认”按钮，然后打开—设置页面—'
@@ -63,11 +54,16 @@ class InputTranslationTests(unittest.TestCase):
             with self.assertRaises(TimeoutError):
                 translate_input('请点击“确认”', configuration())
 
-    def test_only_protected_chinese_skips_api(self):
-        for text in ('"确认"', 'Click 【设置】', '`中文`', '```python\n中文\n```'):
-            with self.subTest(text=text), patch('input_translate.translate') as request:
-                self.assertEqual(translate_input(text, {}), text)
-                request.assert_not_called()
+    def test_only_protected_input_still_calls_api_and_restores(self):
+        for text in ('"确认"', 'Click 【设置】', '`中文`', '```python\n中文\n```', '`English`'):
+            config = {'input_translation_prompt': 'Translate'}
+            with self.subTest(text=text), \
+                    patch('input_translate.translate', side_effect=lambda text, *_: text) as request:
+                self.assertEqual(translate_input(text, config), text)
+                request.assert_called_once()
+                self.assertNotIn('中文', request.call_args.args[0])
+                self.assertNotIn('确认', request.call_args.args[0])
+                self.assertIn('Keep each __KEEP_', request.call_args.args[2])
 
     def test_invalid_placeholders_fail_without_stdout(self):
         import io

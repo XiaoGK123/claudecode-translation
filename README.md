@@ -83,7 +83,7 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 | `balance_timeout_seconds` | `3` | Balance query timeout |
 | `balance_refresh_seconds` | `30` | Balance refresh interval, at least 0.2 seconds |
 | `input_translation_enabled` | `true` | Enable Option+A input translation |
-| `han_ratio_threshold` | `0.2` | Han / all letters outside protected passages; inclusive threshold from 0 to 1, shared by the guard and input translation |
+| `han_ratio_threshold` | `0.2` | Han / all letters outside protected passages; inclusive threshold from 0 to 1, used only by the submitted prompt guard |
 | `loc_monitor_enabled` | `true` | Enable background Claude web egress region checks and macOS notifications |
 | `expected_loc` | `SG` | Expected two-letter region code from the Claude trace endpoint; case-insensitive |
 
@@ -204,8 +204,8 @@ Han script, including Han used in Japanese, rather than identifying a language.
 
 The hook checks input locally and never calls the translation API. Every blocked
 submission shows exactly `检测到未受保护的中文片段`. It does not offer a translation,
-replace the prompt, or submit automatically. Use Option+A separately to translate
-input meeting the same threshold. For example, `中abcd` (20%) and `请点击“确认”`
+replace the prompt, or submit automatically. Use Option+A separately to translate input; it always calls the translation API,
+regardless of language or Han ratio. For example, `中abcd` (20%) and `请点击“确认”`
 (100% outside protection) are blocked, while `中abcde` (about 16.7%), `！？`,
 `What’s next?`, and `Click “确认”` are allowed.
 
@@ -223,7 +223,7 @@ automatically generated turns. Input, configuration, or detection errors allow
 submission without exposing error details. Only successful rule matches block.
 
 The former `prompt_guard_enabled` setting has been removed; any value left in
-an existing configuration is ignored. Existing configuration files inherit `han_ratio_threshold: 0.2` without being rewritten. Changes to the threshold apply on the next call. Non-numeric, boolean, non-finite, or out-of-range thresholds cause the guard to allow submission and input translation to fail for original-text recovery.
+an existing configuration is ignored. Existing configuration files inherit `han_ratio_threshold: 0.2` without being rewritten. Changes to the threshold apply on the next call. Non-numeric, boolean, non-finite, or out-of-range thresholds cause the guard to allow submission. This threshold does not affect input translation.
 The guard is independent of reply translation and the Option+A shortcut. Installation
 does not set `onFailure: "block"`; hook crashes or timeouts do not block submission.
 Use a Claude Code version supporting `suppressOriginalPrompt`,
@@ -237,7 +237,7 @@ Place the cursor in an input field and press **⌥A**. The helper translates the
 
 Input translation protects Chinese inside `“…”`, `‘…’`, `「…」`, `『…』`, `（…）`, `【…】`, `〔…〕`, `《…》`, `〈…〉`, `(...)`, `[...]`, `{...}`, and `"..."` locally before calling the API. For `“…”`, only the contents are replaced with a unique placeholder and restored verbatim; the outer quotes are sent to the translator for conversion to English punctuation. Other supported pairs protect the entire passage, including delimiters. Nested and multiline passages are supported; the outermost matching passage is protected. Ordinary unclosed or mismatched delimiters do not protect an outer passage, but valid inner passages can still be protected. Backslash-escaped delimiters are treated as literal text. English single quotes and paired dashes are not protected.
 
-Backtick inline code (including multiple-backtick delimiters) and backtick fenced code blocks are always protected, even without Chinese. An unclosed fenced block is protected through the end of the input; an unclosed inline backtick is treated as ordinary text. Input translation uses the same `han_ratio_threshold` rule as the guard. If there are no unprotected Han characters or the ratio is below the threshold, the original input is returned without an API call. Otherwise, the configured input prompt is supplemented with instructions to preserve placeholders. Missing, modified, duplicated, or invented placeholders fail translation with `PlaceholderError`, allowing the shortcut helper to attempt original-text recovery. Protected contents are never sent to the translation API.
+Backtick inline code (including multiple-backtick delimiters) and backtick fenced code blocks are always protected, even without Chinese. An unclosed fenced block is protected through the end of the input; an unclosed inline backtick is treated as ordinary text. Option+A input translation always calls the configured translation API, regardless of language, Han ratio, or whether all text is protected. It does not consult `han_ratio_threshold`. When protected passages exist, only their placeholders are sent, and the input prompt is supplemented with instructions to preserve them. Missing, modified, duplicated, or invented placeholders fail translation with `PlaceholderError`, allowing the shortcut helper to attempt original-text recovery. Protected contents are never sent to the translation API.
 
 On first launch, the service compiles the Swift helper and requests macOS Accessibility permission. Follow the prompts to allow the terminal running the service and the native helper. Grant Input Monitoring permission if requested, then restart the service. Reply translation remains available if shortcut permissions are missing.
 
