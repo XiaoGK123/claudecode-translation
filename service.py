@@ -78,25 +78,22 @@ def feature_status(config):
 
 
 def fit_status_line(text, columns):
-    """Stay short of the right margin so refreshes cannot leave wrapped rows."""
+    """Wrap the complete status, leaving room before the terminal's right margin."""
     text = "".join(" " if unicodedata.category(char).startswith("C") else char
                    for char in text)
-    limit = max(0, columns - 1)
+    limit = max(2, columns - 1)
     widths = [0 if unicodedata.combining(char) else
               2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
               for char in text]
-    if sum(widths) <= limit:
-        return text
-    if limit == 0:
-        return ""
     used = 0
     result = []
     for char, width in zip(text, widths):
-        if used + width > limit - 1:
-            break
+        if used + width > limit:
+            result.append("\n")
+            used = 0
         result.append(char)
         used += width
-    return "".join(result) + "…"
+    return "".join(result)
 
 
 def refresh_balance(stopped, results, interval):
@@ -166,8 +163,10 @@ def run():
             terminal_line = sys.stdout.isatty()
             switches = feature_status(config)
             last_switch_check = time.monotonic()
+            status_rows = 1
 
             def render(label, initial=False):
+                nonlocal status_rows
                 balance_status = f" | 余额 {label}" if label is not None else ""
                 line = prefix + " | " + switches + balance_status + " | 按 Ctrl+C 关闭并删除 Hook"
                 if terminal_line:
@@ -176,7 +175,10 @@ def run():
                     except (AttributeError, OSError, ValueError):
                         columns = shutil.get_terminal_size().columns
                     line = fit_status_line(line, columns)
-                    print("\r\033[2K" + line, end="", flush=True)
+                    # Clear from the last status row upwards, then redraw the block.
+                    clear = "\r\033[2K" + "\033[1A\r\033[2K" * (status_rows - 1)
+                    print(clear + line.replace("\n", "\r\n"), end="", flush=True)
+                    status_rows = line.count("\n") + 1
                 elif initial:
                     print(line, flush=True)
 

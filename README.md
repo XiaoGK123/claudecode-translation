@@ -31,9 +31,9 @@ threshold (for example, `汉字比例阈值 20%`), and the current egress region
 state (`loc_monitor_enabled`). In an interactive terminal, the threshold and region
 switch indicator refresh within about one second after configuration changes;
 region checks run every 60 seconds. An invalid threshold displays `汉字比例阈值 配置无效`.
-The interactive status stays on one terminal row. Text exceeding the current
-terminal width is shortened with `…` to prevent wrapped rows accumulating on
-refresh; widen the window to see more fields. Redirected output keeps the full
+The interactive status wraps to show all fields at the current terminal width.
+Refreshes replace the entire status block instead of adding more rows.
+Redirected output keeps the full
 startup status and does not print periodic status updates.
 
 Run `claude` in your target project and use `/hooks` to confirm that `MessageDisplay` is registered. Try this prompt:

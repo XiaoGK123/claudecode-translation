@@ -23,14 +23,13 @@ from service import feature_status, fit_status_line
 
 
 class ServiceStatusTests(unittest.TestCase):
-    def test_status_fits_terminal_cells_including_chinese(self):
-        self.assertEqual(fit_status_line('中文abcd', 6), '中文…')
+    def test_status_wraps_without_losing_text(self):
+        self.assertEqual(fit_status_line('中文abcd', 6), '中文a\nbcd')
         self.assertEqual(fit_status_line('中文abcd', 9), '中文abcd')
-        self.assertEqual(fit_status_line('abcdef', 6), 'abcd…')
+        self.assertEqual(fit_status_line('abcdef', 6), 'abcde\nf')
         self.assertEqual(fit_status_line('e\u0301abc', 5), 'e\u0301abc')
-        for columns in (0, 1):
-            self.assertEqual(fit_status_line('中文', columns), '')
-        self.assertEqual(fit_status_line('中文', 2), '…')
+        for columns in (0, 1, 2):
+            self.assertEqual(fit_status_line('中文', columns), '中\n文')
 
     def test_status_cannot_inject_newlines_or_terminal_controls(self):
         self.assertEqual(fit_status_line('model\nname\r\t\x1b', 80), 'model name   ')
@@ -39,11 +38,12 @@ class ServiceStatusTests(unittest.TestCase):
         text = ('服务运行中 | Hook 已安装 | 模型 deepseek-flash | Option+A 已启用 | '
                 + feature_status({}) + ' | 余额 7.02 CNY | 按 Ctrl+C 关闭并删除 Hook')
         for columns in (160, 80, 40):
-            line = fit_status_line(text, columns)
-            # These status strings contain ASCII, wide Chinese, and the ellipsis.
-            cells = sum(2 if '\u3000' <= char <= '\uffef' else 1 for char in line)
-            self.assertLess(cells, columns)
-            self.assertTrue(line.endswith('…'))
+            wrapped = fit_status_line(text, columns)
+            self.assertEqual(wrapped.replace('\n', ''), text)
+            self.assertIn('\n', wrapped)
+            for line in wrapped.split('\n'):
+                cells = sum(2 if '\u3000' <= char <= '\uffef' else 1 for char in line)
+                self.assertLess(cells, columns)
         self.assertEqual(fit_status_line(text, 400), text)
 
     def test_threshold_percentage_display(self):
@@ -215,7 +215,7 @@ class ServiceTests(unittest.TestCase):
                   "balance_refresh_seconds": 0.2, "balance_timeout_seconds": 0.5}
         (self.root / "config.json").write_text(json.dumps(config))
         master, slave = pty.openpty()
-        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 400, 0, 0))
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
         process = subprocess.Popen([sys.executable, str(self.root / "service.py")],
                                    stdout=slave, stderr=slave)
         os.close(slave)
@@ -227,11 +227,14 @@ class ServiceTests(unittest.TestCase):
                     output += os.read(master, 65536)
                 if "余额 9.00 CNY" in output.decode():
                     break
-            text = output.decode()
+            raw_text = output.decode()
+            text = raw_text.replace("\r\r\n", "").replace("\r\n", "")
             self.assertIn("余额 10.00 CNY", text)
             self.assertIn("余额 9.00 CNY", text)
             self.assertIn("\r\033[2K", text)
-            self.assertNotIn("\n", text)
+            self.assertIn("\n", raw_text)
+            self.assertIn("\033[1A\r\033[2K", text)
+            self.assertIn("按 Ctrl+C", text.replace("\r", "").replace("\n", ""))
             self.assertNotIn("service-test-key", text)
             self.assertGreaterEqual(len(requests), 2)
             self.assertTrue(all(path == "/user/balance" for path in requests))
@@ -248,10 +251,10 @@ class ServiceTests(unittest.TestCase):
                     changed += os.read(master, 65536)
                 if "汉字比例阈值 35%" in changed.decode():
                     break
-            self.assertIn("中文提交检查 已开启", changed.decode())
-            self.assertIn("汉字比例阈值 35%", changed.decode())
-            self.assertIn("出口地区监测 已开启", changed.decode())
-            self.assertNotIn("\n", changed.decode())
+            self.assertIn("中文提交检查 已开启", changed.decode().replace("\r\r\n", "").replace("\r\n", ""))
+            self.assertIn("汉字比例阈值 35%", changed.decode().replace("\r\r\n", "").replace("\r\n", ""))
+            self.assertIn("出口地区监测 已开启", changed.decode().replace("\r\r\n", "").replace("\r\n", ""))
+            self.assertIn("\n", changed.decode())
             process.send_signal(signal.SIGINT)
             self.assertEqual(process.wait(timeout=5), 0)
             self.assertFalse(self.installed())
