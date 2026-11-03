@@ -96,6 +96,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertNotIn("transcript_path", body)
 
     def test_anthropic_reply_translation(self):
+        self.config["base_url"] = self.config["base_url"].removesuffix("v1/") + "ccr/"
         self.config.update(api_provider="anthropic", api_format="messages", display_mode="chinese",
                            max_output_tokens=4096, reply_translation_prompt="Translate reply")
         self.response = {"type": "message", "role": "assistant", "stop_reason": "end_turn",
@@ -105,7 +106,7 @@ class IntegrationTests(unittest.TestCase):
         result = self.hook()
         self.assertEqual(result["hookSpecificOutput"]["displayContent"], "测试通过。\n")
         path, body, auth = self.requests[0]
-        self.assertEqual(path, "/v1/messages")
+        self.assertEqual(path, "/ccr/v1/messages")
         self.assertIsNone(auth)
         headers = {key.lower(): value for key, value in self.request_headers[0].items()}
         self.assertEqual(headers["x-api-key"], "test-only-key")

@@ -15,7 +15,7 @@ from translate_hook import configuration, translate
 
 class ProviderTests(unittest.TestCase):
     def setUp(self):
-        self.config = configuration()
+        self.config = json.loads((Path(__file__).resolve().parents[1] / "config.example.json").read_text())
         self.config["api_key"] = "test-key"
 
     def test_deepseek_extension_and_format_validation(self):
@@ -136,6 +136,21 @@ class AnthropicProviderTests(unittest.TestCase):
                                           {"type": "redacted_thinking", "data": "private"},
                                           {"type": "text", "text": " second"}])
         self.assertEqual(self.provider.parse_response(response, self.config), "First second")
+
+    def test_messages_url_accepts_gateway_root_or_versioned_root(self):
+        cases = [("https://gateway.example", "https://gateway.example/v1/messages"),
+                 ("https://gateway.example/", "https://gateway.example/v1/messages"),
+                 ("https://gateway.example/ccr/", "https://gateway.example/ccr/v1/messages"),
+                 ("https://gateway.example/ccr", "https://gateway.example/ccr/v1/messages"),
+                 ("https://gateway.example/v1/", "https://gateway.example/v1/messages"),
+                 (" https://gateway.example/ccr/v1/ ", "https://gateway.example/ccr/v1/messages"),
+                 ("https://gateway.example/ccr/v10/", "https://gateway.example/ccr/v10/v1/messages")]
+        for base_url, expected in cases:
+            self.config["base_url"] = base_url
+            response = io.BytesIO(json.dumps(self.response()).encode())
+            with self.subTest(base_url=base_url), patch("urllib.request.urlopen", return_value=response) as request:
+                self.assertEqual(translate("Hello", self.config), "Translated")
+                self.assertEqual(request.call_args.args[0].full_url, expected)
 
     def test_incomplete_error_and_malformed_responses_rejected(self):
         responses = [self.response(stop_reason=reason) for reason in

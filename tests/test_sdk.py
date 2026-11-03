@@ -14,7 +14,7 @@ from translate_hook import configuration, translate
 
 class SDKTests(unittest.TestCase):
     def setUp(self):
-        self.config = configuration()
+        self.config = json.loads((Path(__file__).resolve().parents[1] / "config.example.json").read_text())
         self.config.update(api_provider="openai_compatible", api_key="test-key",
                            base_url="https://example.com/v1/", model="test-model",
                            timeout_seconds=2)

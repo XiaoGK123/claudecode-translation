@@ -1,4 +1,6 @@
 """Anthropic-compatible, non-streaming Messages API using the standard library."""
+from urllib.parse import urlsplit
+
 from .base import APIProvider
 
 
@@ -11,7 +13,10 @@ class AnthropicProvider(APIProvider):
     def build_request(self, text, config, instructions):
         if config["api_format"] != "messages":
             raise ValueError("Anthropic requires messages")
-        return "/messages", {
+        # Match Messages clients that accept either a gateway root or its /v1 root.
+        path = urlsplit(config["base_url"].strip()).path.rstrip("/")
+        endpoint = "/messages" if path.endswith("/v1") else "/v1/messages"
+        return endpoint, {
             "model": config["model"], "system": instructions,
             "messages": [{"role": "user", "content": text}],
             "stream": False, "max_tokens": int(config["max_output_tokens"])}

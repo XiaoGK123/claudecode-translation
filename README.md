@@ -140,8 +140,10 @@ Anthropic-compatible service configuration (merge into `config.json`):
 ```
 
 For a compatible gateway, replace `base_url`, `api_key`, and `model` with its
-values. Include any required path prefix (usually `/v1`) in `base_url`; the
-adapter appends `/messages`. Requests use top-level `system` instructions and
+values. Keep any gateway path prefix (for example, `/ccr/`) in `base_url`.
+The adapter automatically appends `/v1/messages`, or just `/messages` when the
+base path already ends in `/v1`. Both root and versioned base URLs are accepted.
+Requests use top-level `system` instructions and
 user `messages`, following the [Messages API](https://platform.claude.com/docs/en/api/messages/create).
 Only completed `end_turn` responses are accepted. Text blocks are joined in
 order; thinking blocks are omitted. Truncated, refused, or tool-use responses
