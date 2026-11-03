@@ -23,6 +23,7 @@ class IntegrationTests(unittest.TestCase):
             shutil.copy2(ROOT / name, self.root)
         shutil.copy2(ROOT / "config.example.json", self.root)
         self.requests = []
+        self.request_headers = []
         self.response = {"status": "completed", "output": [
             {"type": "reasoning", "summary": []},
             {"type": "message", "role": "assistant", "content": [
@@ -35,6 +36,7 @@ class IntegrationTests(unittest.TestCase):
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 case.requests.append((self.path, body, self.headers.get("Authorization")))
+                case.request_headers.append(dict(self.headers))
                 time.sleep(case.delay)
                 self.send_response(case.http_status)
                 self.end_headers()
@@ -92,6 +94,55 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(body["input"], "Tests passed.\n")
         self.assertFalse(body["store"])
         self.assertNotIn("transcript_path", body)
+
+    def test_anthropic_reply_translation(self):
+        self.config.update(api_provider="anthropic", api_format="messages", display_mode="chinese",
+                           max_output_tokens=4096, reply_translation_prompt="Translate reply")
+        self.response = {"type": "message", "role": "assistant", "stop_reason": "end_turn",
+                         "content": [{"type": "thinking", "thinking": "not displayed"},
+                                     {"type": "text", "text": "测试"},
+                                     {"type": "text", "text": "通过。"}]}
+        result = self.hook()
+        self.assertEqual(result["hookSpecificOutput"]["displayContent"], "测试通过。\n")
+        path, body, auth = self.requests[0]
+        self.assertEqual(path, "/v1/messages")
+        self.assertIsNone(auth)
+        headers = {key.lower(): value for key, value in self.request_headers[0].items()}
+        self.assertEqual(headers["x-api-key"], "test-only-key")
+        self.assertEqual(headers["anthropic-version"], "2023-06-01")
+        self.assertEqual(body["system"], "Translate reply")
+        self.assertEqual(body["max_tokens"], 4096)
+        self.assertEqual(body["messages"], [{"role": "user", "content": "Tests passed.\n"}])
+        self.assertNotIn("enable_thinking", body)
+
+    def test_anthropic_input_translation_and_failure_recovery(self):
+        self.config.update(api_provider="anthropic", api_format="messages",
+                           input_translation_prompt="Translate input")
+        (self.root / "config.json").write_text(json.dumps(self.config))
+        env = {key: value for key, value in os.environ.items()
+               if not key.lower().endswith("_proxy")}
+        for reason in ("end_turn", "max_tokens"):
+            self.response = {"type": "message", "role": "assistant", "stop_reason": reason,
+                             "content": [{"type": "text", "text": "Hello"}]}
+            run = subprocess.run([sys.executable, str(self.root / "input_translate.py")],
+                                 input="你好\n", capture_output=True, text=True, env=env, timeout=5)
+            if reason == "end_turn":
+                self.assertEqual(run.returncode, 0)
+                self.assertEqual(run.stdout, "Hello\n")
+            else:
+                self.assertEqual(run.returncode, 1)
+                self.assertEqual(run.stdout, "")
+                self.assertNotIn("test-only-key", run.stderr)
+            self.assertEqual(self.requests[-1][1]["system"], "Translate input")
+
+    def test_anthropic_reply_falls_back_on_incomplete_and_http_error(self):
+        self.config.update(api_provider="anthropic", api_format="messages")
+        self.response = {"type": "message", "role": "assistant", "stop_reason": "max_tokens",
+                         "content": [{"type": "text", "text": "partial"}]}
+        self.assertEqual(self.hook(), {})
+        self.http_status = 401
+        self.response = {"type": "error", "error": {"message": "test-only-key"}}
+        self.assertEqual(self.hook(), {})
 
     def test_prompt_guard_blocks_without_api(self):
         self.config.update(api_provider="deepseek", api_format="chat_completions", api_key="")

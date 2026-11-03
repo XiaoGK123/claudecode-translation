@@ -70,6 +70,8 @@ class ProviderTests(unittest.TestCase):
             ({"base_url": "https://example.com/v1",
               "api_format": "chat_completions"}, "openai_compatible"),
             ({"api_format": "responses"}, "openai_compatible"),
+            ({"api_format": "messages"}, "anthropic"),
+            ({"api_provider": "anthropic", "api_format": "messages"}, "anthropic"),
             ({"api_provider": "openai_compatible"}, "openai_compatible"),
         ]
         with tempfile.TemporaryDirectory() as directory:
@@ -100,6 +102,66 @@ class ProviderTests(unittest.TestCase):
             self.assertEqual(json.loads(sent.data),
                              {"text": " Hello\n", "prompt": "Custom prompt"})
             self.assertEqual(sent.get_header("Authorization"), "Bearer test-key")
+
+
+class AnthropicProviderTests(unittest.TestCase):
+    def setUp(self):
+        self.config = json.loads((Path(__file__).resolve().parents[1] / "config.example.json").read_text())
+        self.config.update(api_provider="anthropic", api_format="messages", api_key="test-key",
+                           model="test-model", max_output_tokens=4096,
+                           base_url="https://gateway.example/prefix/v1/")
+        self.provider = get_provider(self.config)
+
+    def response(self, **fields):
+        return {"type": "message", "role": "assistant", "stop_reason": "end_turn",
+                "content": [{"type": "text", "text": "Translated"}], **fields}
+
+    def test_request_auth_body_timeout_and_whitespace(self):
+        response = io.BytesIO(json.dumps(self.response()).encode())
+        with patch("urllib.request.urlopen", return_value=response) as request:
+            self.assertEqual(translate(" Hello\n", self.config, "Translate exactly"), " Translated\n")
+        sent = request.call_args.args[0]
+        headers = {key.lower(): value for key, value in sent.header_items()}
+        self.assertEqual(sent.full_url, "https://gateway.example/prefix/v1/messages")
+        self.assertEqual(headers, {"x-api-key": "test-key", "anthropic-version": "2023-06-01",
+                                   "content-type": "application/json"})
+        self.assertEqual(request.call_args.kwargs["timeout"], self.config["timeout_seconds"])
+        self.assertEqual(json.loads(sent.data), {
+            "model": "test-model", "system": "Translate exactly", "stream": False,
+            "max_tokens": 4096, "messages": [{"role": "user", "content": " Hello\n"}]})
+
+    def test_text_blocks_join_without_thinking(self):
+        response = self.response(content=[{"type": "thinking", "thinking": "private"},
+                                          {"type": "text", "text": "First"},
+                                          {"type": "redacted_thinking", "data": "private"},
+                                          {"type": "text", "text": " second"}])
+        self.assertEqual(self.provider.parse_response(response, self.config), "First second")
+
+    def test_incomplete_error_and_malformed_responses_rejected(self):
+        responses = [self.response(stop_reason=reason) for reason in
+                     ("max_tokens", "tool_use", "pause_turn", "refusal", "stop_sequence", None)]
+        responses += [None, [], {"type": "error", "error": {"message": "secret"}},
+                      self.response(role="user"), self.response(content=None)]
+        responses += [self.response(content=content) for content in
+                      ([], [None], [{"type": "text"}], [{"type": "text", "text": 42}],
+                       [{"type": "text", "text": " "}], [{"type": "thinking"}],
+                       [{"type": "tool_use"}])]
+        for response in responses:
+            with self.subTest(response=response), self.assertRaises(RuntimeError):
+                self.provider.parse_response(response, self.config)
+
+    def test_incompatible_formats_fail_before_network(self):
+        for api_format in ("chat_completions", "responses", "unknown"):
+            self.config["api_format"] = api_format
+            with self.subTest(api_format=api_format), patch("urllib.request.urlopen") as request:
+                with self.assertRaises(ValueError):
+                    translate("Hello", self.config)
+                request.assert_not_called()
+
+    def test_balance_skips_network(self):
+        with patch("urllib.request.urlopen") as request:
+            self.assertIsNone(balance_label(self.config))
+            request.assert_not_called()
 
 
 if __name__ == "__main__":

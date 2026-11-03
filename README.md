@@ -2,7 +2,7 @@
 
 Translate Claude Code's English replies into Simplified Chinese through a `MessageDisplay` Hook. **Only the on-screen text is replaced**; conversation transcripts and model context retain the original replies. On macOS, the global **Option+A (⌥A)** shortcut also translates input into English.
 
-DeepSeek is the default provider and uses the Python standard library. OpenAI compatible mode uses the official OpenAI Python SDK for Chat Completions and Responses.
+DeepSeek is the default provider and uses the Python standard library. Anthropic-compatible Messages also uses the standard library. OpenAI compatible mode uses the official OpenAI Python SDK for Chat Completions and Responses.
 
 ## Requirements
 
@@ -20,7 +20,7 @@ python3 -m pip install -r requirements.txt
 python3 service.py
 ```
 
-Install dependencies using the same Python interpreter that runs `service.py` and the Hook. The SDK is loaded only in `openai_compatible` mode; DeepSeek does not require it.
+Install dependencies using the same Python interpreter that runs `service.py` and the Hook. The SDK is loaded only in `openai_compatible` mode; DeepSeek and Anthropic do not require it.
 
 On the first run, the service creates `config.json` with permissions `600` and exits. Fill in `api_key`, confirm `base_url` and `model`, then run it again.
 
@@ -63,10 +63,10 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 
 | Setting | Default | Description |
 |---|---|---|
-| `api_provider` | `deepseek` | `deepseek` or `openai_compatible`; selects the API adapter |
+| `api_provider` | `deepseek` | `deepseek`, `openai_compatible`, or `anthropic`; selects the API adapter |
 | `api_key` | Empty | Translation provider's API key |
 | `base_url` | `https://api.deepseek.com` | API base URL, including any required prefix such as `/v1` |
-| `api_format` | `chat_completions` | DeepSeek: `chat_completions` only; OpenAI compatible: `chat_completions` or `responses` |
+| `api_format` | `chat_completions` | DeepSeek: `chat_completions`; OpenAI compatible: `chat_completions` or `responses`; Anthropic: `messages` |
 | `model` | `deepseek-flash` | A model supported by your provider |
 | `thinking_type` | `disabled` | DeepSeek only: `enabled`, `disabled`, or `null` to omit; ignored by OpenAI compatible |
 | `extra_body` | `{"enable_thinking": false}` | OpenAI compatible only: JSON object passed to the SDK's `extra_body` for both API formats; use `{}` to send no extension fields |
@@ -87,7 +87,7 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 | `loc_monitor_enabled` | `true` | Enable background Claude web egress region checks and macOS notifications |
 | `expected_loc` | `SG` | Expected two-letter region code from the Claude trace endpoint; case-insensitive |
 
-The selected adapter appends `/chat/completions` or `/responses` automatically. Responses requests use `store: false`. Each translation is an independent request.
+The selected adapter appends `/chat/completions`, `/responses`, or `/messages` automatically. Responses requests use `store: false`. Each translation is an independent request.
 
 ### API providers
 
@@ -95,6 +95,7 @@ Both reply and input translation use the selected provider. Set `api_provider` e
 
 - `deepseek`: Chat Completions with the DeepSeek `thinking` parameter and balance API.
 - `openai_compatible`: Chat Completions or Responses through the SDK, with optional provider-specific fields from `extra_body`. The DeepSeek `thinking_type` setting is ignored. Balance queries are unsupported and skipped, even when `show_balance` is true. Model and token limits must match the target service.
+- `anthropic`: Non-streaming Messages through the standard library, using `x-api-key` authentication and `anthropic-version: 2023-06-01` for compatibility. Balance queries are skipped; `thinking_type` and `extra_body` are ignored.
 
 DeepSeek configuration (merge these fields into `config.json`):
 
@@ -124,9 +125,31 @@ OpenAI-compatible service configuration:
 
 For an OpenAI Responses service, use the corresponding base URL and change `api_format` to `responses`. Supply that service's API key.
 
+Anthropic-compatible service configuration (merge into `config.json`):
+
+```json
+{
+  "api_provider": "anthropic",
+  "api_format": "messages",
+  "base_url": "https://api.anthropic.com/v1",
+  "api_key": "your-api-key",
+  "model": "your-model",
+  "max_output_tokens": 4096,
+  "show_balance": false
+}
+```
+
+For a compatible gateway, replace `base_url`, `api_key`, and `model` with its
+values. Include any required path prefix (usually `/v1`) in `base_url`; the
+adapter appends `/messages`. Requests use top-level `system` instructions and
+user `messages`, following the [Messages API](https://platform.claude.com/docs/en/api/messages/create).
+Only completed `end_turn` responses are accepted. Text blocks are joined in
+order; thinking blocks are omitted. Truncated, refused, or tool-use responses
+follow the existing translation failure recovery behavior.
+
 `extra_body` is merged into the top level of the request JSON by the SDK; it is not sent as a nested `extra_body` field. Its default `enable_thinking: false` is a provider extension, so use `"extra_body": {}` for services that do not accept it (including the official OpenAI API). Existing config files that omit the setting inherit the default. Custom objects replace the entire default object. Non-object values cause translation to fail and follow the existing original-text recovery behavior. DeepSeek ignores `extra_body` and continues to use `thinking_type`.
 
-Old `config.json` files without `api_provider` are migrated in memory: Chat Completions at hostname `api.deepseek.com` selects DeepSeek; other URLs or Responses select OpenAI compatible. For DeepSeek proxies, explicitly set `api_provider: "deepseek"` to retain its thinking and balance behavior. Config files are not rewritten. Unknown providers or unsupported formats follow the existing translation failure recovery behavior.
+Old `config.json` files without `api_provider` are migrated in memory: `messages` selects Anthropic; Chat Completions at hostname `api.deepseek.com` selects DeepSeek; other URLs or Responses select OpenAI compatible. For DeepSeek proxies, explicitly set `api_provider: "deepseek"` to retain its thinking and balance behavior. Config files are not rewritten. Unknown providers or unsupported formats follow the existing translation failure recovery behavior.
 
 ### Adding a provider
 

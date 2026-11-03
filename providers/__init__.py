@@ -3,15 +3,19 @@ from urllib.parse import urlsplit
 
 from .deepseek import DeepSeekProvider
 from .openai_compatible import OpenAICompatibleProvider
+from .anthropic import AnthropicProvider
 
 PROVIDERS = {
     "deepseek": DeepSeekProvider(),
     "openai_compatible": OpenAICompatibleProvider(),
+    "anthropic": AnthropicProvider(),
 }
 
 
 def legacy_provider(config):
     # Old configs did not distinguish provider from wire format.
+    if config.get("api_format") == "messages":
+        return "anthropic"
     if (config.get("api_format") == "chat_completions"
             and urlsplit(config.get("base_url", "")).hostname == "api.deepseek.com"):
         return "deepseek"

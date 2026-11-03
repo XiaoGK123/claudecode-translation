@@ -19,11 +19,15 @@ class APIProvider(ABC):
         base = config["base_url"].strip().rstrip("/")
         request = urllib.request.Request(
             base + endpoint, data=json.dumps(body).encode("utf-8"),
-            headers={"Authorization": "Bearer " + config["api_key"],
-                     "Content-Type": "application/json"}, method="POST")
+            headers=self.request_headers(config), method="POST")
         with urllib.request.urlopen(request, timeout=timeout) as response:
             data = json.load(response)
         return self.parse_response(data, config)
+
+    def request_headers(self, config):
+        """Return authentication and content headers for this provider."""
+        return {"Authorization": "Bearer " + config["api_key"],
+                "Content-Type": "application/json"}
 
     def balance_label(self, config):
         """Return a balance label, or None when balance is unsupported."""
