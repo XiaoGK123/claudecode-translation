@@ -6,6 +6,7 @@ import re
 import sys
 import urllib.error
 from pathlib import Path
+from translation_log import logged_translation
 from providers import get_provider, legacy_provider
 
 ROOT = Path(__file__).resolve().parent
@@ -61,7 +62,7 @@ def main():
             raise RuntimeError("expected MessageDisplay input with string delta")
         config = configuration()
         if config.get("enabled", True) and text.strip() and re.search(r"[A-Za-z]", text):
-            translated = translate(text, config)
+            translated = logged_translation("reply", text, config, lambda: translate(text, config))
             if config.get("display_mode", "bilingual") == "bilingual":
                 quoted = "".join("> " + line for line in text.lstrip("\r\n").splitlines(keepends=True))
                 display = translated.rstrip() + "\n\n" + quoted
@@ -81,3 +82,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+

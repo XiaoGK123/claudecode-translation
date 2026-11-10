@@ -306,3 +306,19 @@ Coverage includes translation requests, transcript preservation, error fallback,
 - [Claude MessageDisplay](https://code.claude.com/docs/en/hooks#messagedisplay)
 - [DeepSeek API](https://api-docs.deepseek.com/)
 - [OpenAI Text Generation](https://developers.openai.com/api/docs/guides/text)
+
+
+## Translation logs
+
+Reply and input translations write private JSON records in `.runtime/translation-logs/`.
+Each request records a unique ID, direction, provider/model, original text, translated
+text on success, start/end Unix timestamps, duration, and failure type/HTTP status.
+A started record remains if a process is interrupted. API keys, headers, and raw error
+bodies are never logged. Logs contain full source and translated text; directory
+permissions are 700 and files are 600. Logging failures do not block translation.
+
+Records expire **300 seconds after request start**. The running service cleans at
+startup and **every 60 seconds**, so physical deletion normally occurs within
+5–6 minutes. Completed requests also clean expired records. Cleanup stops when the
+service exits; residual records are deleted on the next startup or completed request.
+Existing service/hotkey diagnostic logs are separate and retain their current behavior.
