@@ -21,6 +21,7 @@ from balance import balance_label
 from translate_hook import configuration
 import hotkey
 import loc_monitor
+import translation_log
 from input_protection import DEFAULT_HAN_RATIO_THRESHOLD
 
 ROOT = Path(__file__).resolve().parent
@@ -122,6 +123,7 @@ def run():
         stop_client = None
         hotkey_process = None
         stopped = threading.Event()
+        translation_log.start(stopped)
         results = queue.SimpleQueue()
         terminal_line = False
         settings = settings_path()
@@ -350,3 +352,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+

@@ -1,5 +1,6 @@
 """Translate input to English while preserving Chinese in paired delimiters."""
 import sys
+from translation_log import logged_translation
 
 from input_protection import protect, restore
 from translate_hook import configuration, translate, translation_prompt
@@ -7,6 +8,10 @@ from translate_hook import configuration, translate, translation_prompt
 
 
 def translate_input(text, config):
+    return logged_translation("input", text, config, lambda: _translate_input(text, config))
+
+
+def _translate_input(text, config):
     masked, replacements, prefix = protect(text)
     prompt = translation_prompt(config, "input_translation_prompt")
     if replacements:
@@ -28,3 +33,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+

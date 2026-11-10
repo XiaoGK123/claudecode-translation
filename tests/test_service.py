@@ -64,7 +64,7 @@ class ServiceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="translation-")
         self.root = Path(self.temp.name)
-        for name in ("service.py", "hotkey.py", "loc_monitor.py", "balance.py", "translate_hook.py", "install.py", "config.example.json", "input_protection.py"):
+        for name in ("service.py", "hotkey.py", "loc_monitor.py", "balance.py", "translate_hook.py", "translation_log.py", "install.py", "config.example.json", "input_protection.py"):
             shutil.copy2(ROOT / name, self.root)
         shutil.copytree(ROOT / "providers", self.root / "providers")
         self.settings = self.root / "claude-settings.json"
@@ -269,3 +269,4 @@ class ServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

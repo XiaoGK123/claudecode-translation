@@ -19,6 +19,7 @@ class IntegrationTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         shutil.copytree(ROOT / "providers", self.root / "providers")
         shutil.copy2(ROOT / "translate_hook.py", self.root)
+        shutil.copy2(ROOT / "translation_log.py", self.root)
         for name in ("prompt_hook.py", "input_translate.py", "input_protection.py"):
             shutil.copy2(ROOT / name, self.root)
         shutil.copy2(ROOT / "config.example.json", self.root)
@@ -364,7 +365,7 @@ class InstallerTests(unittest.TestCase):
     def test_hook_timeout_read_from_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for name in ("install.py", "translate_hook.py", "config.example.json"):
+            for name in ("install.py", "translation_log.py", "translate_hook.py", "config.example.json"):
                 shutil.copy2(ROOT / name, root)
             shutil.copytree(ROOT / "providers", root / "providers")
             (root / "config.json").write_text('{"timeout_seconds": 35, "hook_timeout_seconds": 45}')
@@ -418,3 +419,4 @@ class InstallerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
