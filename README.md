@@ -26,7 +26,7 @@ On the first run, the service creates `config.json` with permissions `600` and e
 
 The service stays in the current terminal, registers the Hook automatically, and refreshes the balance on the same status line. By default, it updates `~/.claude/settings.json`, applying to all Claude projects. To use it for a single project, set `settings_file` to the absolute path of that project's `.claude/settings.local.json`.
 
-The status line shows submitted prompt checking as always enabled, its Han ratio
+The status line shows the submitted prompt checking switch, its Han ratio
 threshold (for example, `汉字比例阈值 20%`), and the current egress region monitoring
 state (`loc_monitor_enabled`). In an interactive terminal, the threshold and region
 switch indicator refresh within about one second after configuration changes;
@@ -83,6 +83,7 @@ Defaults are read from `config.example.json` and overridden by `config.json`. En
 | `balance_timeout_seconds` | `3` | Balance query timeout |
 | `balance_refresh_seconds` | `30` | Balance refresh interval, at least 0.2 seconds |
 | `input_translation_enabled` | `true` | Enable Option+A input translation |
+| `han_ratio_threshold_enabled` | `true` | Enable the Chinese submitted-prompt check; false bypasses it and clears the session retry state |
 | `han_ratio_threshold` | `0.2` | Han / all letters outside protected passages; inclusive threshold from 0 to 1, used only by the submitted prompt guard |
 | `loc_monitor_enabled` | `true` | Enable background Claude web egress region checks and macOS notifications |
 | `expected_loc` | `SG` | Expected two-letter region code from the Claude trace endpoint; case-insensitive |
@@ -212,7 +213,7 @@ same route is used by a browser or a separate Claude API request.
 ## Submitted Prompt Guard
 
 The service and manual installer also register a synchronous `UserPromptSubmit`
-hook. Submitted prompt checking is always enabled. Submission is blocked
+hook. Submitted prompt checking defaults to enabled. Set `han_ratio_threshold_enabled` to `false` to allow all prompts without the Han ratio check. Submission is blocked
 when the unprotected Han ratio is at least `han_ratio_threshold` (default `0.2`).
 The ratio is Han characters divided by all letters (Han plus other alphabetic
 characters), counted per character, not per word. Spaces, punctuation, digits,
@@ -248,7 +249,7 @@ automatically generated turns. Input, configuration, or detection errors allow
 submission without exposing error details. Only successful rule matches block.
 
 The former `prompt_guard_enabled` setting has been removed; any value left in
-an existing configuration is ignored. Existing configuration files inherit `han_ratio_threshold: 0.2` without being rewritten. Changes to the threshold apply on the next call. Non-numeric, boolean, non-finite, or out-of-range thresholds cause the guard to allow submission. This threshold does not affect input translation.
+an existing configuration is ignored. Existing configuration files inherit `han_ratio_threshold_enabled: true` and `han_ratio_threshold: 0.2` without being rewritten. Changes to the threshold apply on the next call. Non-numeric, boolean, non-finite, or out-of-range thresholds cause the guard to allow submission. This threshold does not affect input translation.
 The guard is independent of reply translation and the Option+A shortcut. Installation
 does not set `onFailure: "block"`; hook crashes or timeouts do not block submission.
 Use a Claude Code version supporting `suppressOriginalPrompt`,
@@ -322,3 +323,35 @@ startup and **every 60 seconds**, so physical deletion normally occurs within
 5–6 minutes. Completed requests also clean expired records. Cleanup stops when the
 service exits; residual records are deleted on the next startup or completed request.
 Existing service/hotkey diagnostic logs are separate and retain their current behavior.
+
+## Terminal interface (TUI)
+
+Run `python3 service.py tui` (or `python3 tui.py`) in an interactive macOS/Linux
+terminal. The plain, single-column interface uses Python's standard-library
+`curses`; no additional UI package is required. The existing foreground service
+and `start`, `stop`, `status` commands remain available.
+
+- Press `1` for common settings, `2` for API settings, `3` for translation logs.
+- Use Up/Down or Tab to select a row, Enter/Space to toggle a switch or cycle choices.
+- For editable values, Enter opens an empty replacement field; type the new value,
+  Enter saves it, Esc cancels. API keys are masked. Thresholds are shown as percentages.
+- Press `s` to start/stop the background service. Opening the TUI does not itself
+  start a service. Press `q` to leave the interface; the service keeps its current
+  state. Stop it first with `s` if you want Hooks removed on exit.
+- Log entries open with Enter, scroll with Up/Down, and close with Esc. Expired
+  entries disappear from the list and open detail view. Logs still expire after
+  300 seconds and are deleted by the service every 60 seconds.
+
+Edits atomically update only the changed override in `config.json` (permissions
+600), preserving other settings. Invalid values are rejected. A malformed config
+file is never overwritten. Reply translation, Chinese checking, threshold,
+provider/model and prompts are read on the next request. A running service checks
+input translation changes about once a second and starts/stops the Option+A
+helper; compilation or macOS permission setup can take longer. Enabling this
+shortcut on Linux reports it as unavailable. Region checks remain on their
+60-second schedule.
+
+Changing provider selects an appropriate API format, but does not guess the
+provider's URL, model or key: edit those fields before using translation. The
+TUI deliberately does not expose Hook timeout or settings-file relocation;
+those existing file settings still require service restart/re-registration.

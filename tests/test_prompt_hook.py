@@ -27,6 +27,19 @@ class PromptHookTests(unittest.TestCase):
     def submit(self, prompt, session="test-session", config=None):
         return handle({**self.event(prompt), "session_id": session}, config or {})
 
+    def test_disabled_guard_allows_and_clears_retry(self):
+        self.assertEqual(self.submit("你好")["decision"], "block")
+        config = {"han_ratio_threshold_enabled": False, "han_ratio_threshold": "bad"}
+        with patch("prompt_hook.needs_translation") as check:
+            self.assertEqual(self.submit("你好", config=config), {})
+            check.assert_not_called()
+        self.assertEqual(self.submit("你好")["decision"], "block")
+
+    def test_enabled_guard_preserves_retry_behavior(self):
+        config = {"han_ratio_threshold_enabled": True}
+        self.assertEqual(self.submit("你好", config=config)["decision"], "block")
+        self.assertEqual(self.submit("你好", config=config), {})
+
     def test_exact_retry_allows_once(self):
         for prompt in ("你好", "/review 中文"):
             with self.subTest(prompt=prompt):
