@@ -15,6 +15,7 @@ from service import feature_status, apply_input_translation
 class Screen:
     def __init__(self):
         self.lines = []
+        self.positions = []
 
     def getmaxyx(self):
         return 24, 80
@@ -24,6 +25,7 @@ class Screen:
 
     def addstr(self, y, x, text, attr):
         self.lines.append(text)
+        self.positions.append((y, x, text))
 
     def refresh(self):
         pass
@@ -118,13 +120,23 @@ class TUITests(unittest.TestCase):
         self.assertNotIn('replacement-key', ''.join(terminal.screen.lines))
         self.assertIn('********', ''.join(terminal.screen.lines))
 
-    def test_worker_actions_queued_and_quit_does_not_stop_service(self):
+    def test_no_manual_start_stop_key(self):
         terminal = self.terminal()
         terminal.status = {'running': True}
         terminal.key('s')
-        self.assertEqual(terminal.worker.commands.get_nowait(), 'stop')
-        self.assertFalse(terminal.key('q'))
         self.assertTrue(terminal.worker.commands.empty())
+        self.assertFalse(terminal.key('q'))
+
+    def test_centered_block_and_spaced_rows_on_large_terminal(self):
+        terminal = self.terminal()
+        terminal.screen.getmaxyx = lambda: (40, 120)
+        terminal.render()
+        positions = terminal.screen.positions
+        self.assertTrue(all(x == 26 for _, x, _ in positions))
+        self.assertEqual(positions[0][0], 7)
+        labels = [(y, text) for y, _, text in positions if '回复翻译' in text or '显示模式' in text]
+        self.assertEqual(labels[1][0] - labels[0][0], 2)
+        self.assertFalse(any('s 启停' in text for _, _, text in positions))
 
     def test_log_filtering_and_expiration(self):
         directory = self.root / 'logs'
@@ -172,3 +184,43 @@ class LiveInputSwitchTests(unittest.TestCase):
             process, label = apply_input_translation(None, True)
             self.assertIsNone(process)
             self.assertIn('macOS required', label)
+
+
+class ServiceLifetimeTests(unittest.TestCase):
+    def test_start_and_cleanup_are_bound_to_ui_lifetime(self):
+        from unittest.mock import Mock
+        process = Mock()
+        process.poll.return_value = None
+        worker = tui.ServiceWorker()
+        # One poll before launch and one after; stop the loop after first status.
+        def active():
+            if process.called:
+                worker.stopped.set()
+            return None
+        process.called = False
+        def launch(*args, **kwargs):
+            process.called = True
+            return process
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(tui, 'ROOT', Path(directory)), \
+                patch.object(tui, 'CONFIG', Path(directory) / 'config.json'), \
+                patch('service.active', side_effect=active), \
+                patch.object(tui.subprocess, 'Popen', side_effect=launch), \
+                patch.object(tui.subprocess, 'run', return_value=Mock(returncode=0)) as stop:
+            worker.run()
+        process.terminate.assert_called_once()
+        process.wait.assert_called_once_with(timeout=10)
+        self.assertEqual(stop.call_args.args[0][-1], 'stop')
+        self.assertTrue(worker.cleanup_ok)
+
+    def test_attached_service_is_stopped_when_ui_closes(self):
+        from unittest.mock import Mock
+        worker = tui.ServiceWorker()
+        worker.stopped.set()
+        with patch('service.active', return_value={'running': True}), \
+                patch.object(tui.subprocess, 'Popen') as launch, \
+                patch.object(tui.subprocess, 'run', return_value=Mock(returncode=1)) as stop:
+            worker.run()
+        launch.assert_not_called()
+        self.assertEqual(stop.call_args.args[0][-1], 'stop')
+        self.assertFalse(worker.cleanup_ok)

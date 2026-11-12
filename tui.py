@@ -7,6 +7,7 @@ import locale
 import math
 import os
 import queue
+import signal
 import subprocess
 import sys
 import tempfile
@@ -142,32 +143,65 @@ def wrap(text, width):
 
 
 class ServiceWorker:
-    """Keep socket polling and start/stop off the terminal event loop."""
+    """Run the service for the lifetime of the terminal, including cleanup."""
     def __init__(self):
-        self.commands = queue.Queue()
         self.results = queue.SimpleQueue()
         self.stopped = threading.Event()
         self.thread = threading.Thread(target=self.run, daemon=True)
+        self.cleanup_ok = True
 
     def run(self):
         import service
-        while not self.stopped.is_set():
+        process = None
+        attached = False
+        try:
+            attached = bool(service.active())
+            if not attached and not self.stopped.is_set():
+                if not CONFIG.exists():
+                    save_field('han_ratio_threshold_enabled', True)
+                runtime = ROOT / '.runtime'
+                runtime.mkdir(parents=True, exist_ok=True, mode=0o700)
+                with (runtime / 'service.log').open('ab') as log:
+                    process = subprocess.Popen(
+                        [sys.executable, str(ROOT / 'service.py'), '_run'],
+                        stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                        start_new_session=True, close_fds=True)
+            while not self.stopped.is_set():
+                status = service.active()
+                self.results.put(('status', status))
+                if process is not None and process.poll() is not None:
+                    self.results.put(('message', '服务启动失败，请检查配置及 .runtime/service.log'))
+                    break
+                if status:
+                    self.results.put(('busy', False))
+                if self.stopped.wait(1):
+                    break
+        except Exception as error:
+            self.results.put(('message', '服务启动失败：' + type(error).__name__))
+        finally:
+            self.results.put(('busy', False))
+            # Keep the worker alive until the UI exits, even after startup failure.
+            self.stopped.wait()
             try:
-                action = self.commands.get(timeout=1)
-            except queue.Empty:
-                action = None
-            if action:
-                try:
-                    result = subprocess.run([sys.executable, str(ROOT / 'service.py'), action],
-                                            capture_output=True, text=True, timeout=110)
-                    message = ('服务命令完成' if result.returncode == 0 else
-                               '服务命令失败，请查看 .runtime/service.log')
-                    self.results.put(('message', message))
-                except Exception as error:
-                    self.results.put(('message', '服务命令失败：' + type(error).__name__))
-                self.results.put(('busy', False))
-            if not self.stopped.is_set():
-                self.results.put(('status', service.active()))
+                if process is not None and process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=5)
+                if process is not None or attached:
+                    result = subprocess.run(
+                        [sys.executable, str(ROOT / 'service.py'), 'stop'],
+                        capture_output=True, text=True, timeout=10)
+                    self.cleanup_ok = result.returncode == 0
+            except Exception:
+                self.cleanup_ok = False
+
+    def close(self):
+        self.stopped.set()
+        self.thread.join(timeout=35)
+        return not self.thread.is_alive() and self.cleanup_ok
 
 
 class Terminal:
@@ -175,18 +209,24 @@ class Terminal:
         self.screen, self.worker = screen, worker
         self.page, self.index, self.scroll = 0, 0, 0
         self.config, self.status, self.records = {}, None, []
-        self.message = '修改后自动保存；按 s 启停服务'
+        self.message = '修改后自动保存；退出时停止服务并清理 Hook'
         self.editing = None
         self.detail = None
-        self.busy = False
+        self.busy = True
         self.last_refresh = 0
         self.valid_config = False
 
     def put(self, y, text, selected=False):
         height, width = self.screen.getmaxyx()
+        x = getattr(self, 'left', 0)
+        y += getattr(self, 'top', 0)
+        content_width = getattr(self, 'content_width', width - 1)
         if 0 <= y < height - 1:
             try:
-                self.screen.addstr(y, 0, clip(text, max(0, width - 1)),
+                shown = clip(text, max(0, content_width))
+                if selected:
+                    shown += ' ' * max(0, content_width - cell_width(shown))
+                self.screen.addstr(y, x, shown,
                                    curses.A_REVERSE if selected else curses.A_NORMAL)
             except curses.error:
                 pass
@@ -227,19 +267,25 @@ class Terminal:
 
     def render(self):
         self.screen.erase()
-        height, width = self.screen.getmaxyx()
-        if height < 12 or width < 40:
+        height, terminal_width = self.screen.getmaxyx()
+        self.content_width = min(68, max(1, terminal_width - 4))
+        self.left = max(0, (terminal_width - self.content_width) // 2)
+        block_height = min(height - 2, 25)
+        self.top = max(0, (height - block_height) // 2)
+        width = self.content_width
+        if height < 12 or terminal_width < 40:
             self.put(0, '请将终端调整到至少 40 列 × 12 行')
             self.put(1, 'q 退出')
             self.screen.refresh()
             return
-        status = '运行中' if self.status else '未运行'
-        self.put(0, '翻译助手 / ' + status + (' / 正在处理…' if self.busy else ''))
+        status = '运行中' if self.status else ('正在启动' if self.busy else '未运行')
+        self.put(0, '翻译助手 / ' + status)
         balance = self.status.get('balance') if self.status else None
         shortcut = '已启用' if self.status and self.status.get('hotkey_running') else '未运行'
         self.put(1, f"{self.config.get('model', '')} · 余额 {balance or '—'} · ⌥A {shortcut}")
         self.put(3, '[1 常用设置]  [2 API 设置]  [3 日志]')
-        available = max(1, height - 9)
+        row_step = 2 if block_height >= 23 and self.page < 2 and not self.detail else 1
+        available = max(1, (block_height - 9) // row_step)
         if self.detail:
             r = self.detail
             lines = ['原文'] + wrap(r.get('original', ''), width - 2)
@@ -262,8 +308,8 @@ class Terminal:
                         shown = shown[1:]
                     line = label + ': ' + shown + ' ▏'
                 else:
-                    line = label + ': ' + self.value(key, kind)
-                self.put(5 + i, ('> ' if selected else '  ') + line, selected)
+                    line = label + ' ' * max(2, min(26, width // 2) - cell_width(label)) + self.value(key, kind)
+                self.put(5 + i * row_step, ('> ' if selected else '  ') + line, selected)
         else:
             self.put(4, '日志保留 5 分钟，每分钟清理')
             self.index = min(self.index, max(0, len(self.records) - 1))
@@ -275,14 +321,14 @@ class Terminal:
                 kind = '回复' if r.get('kind') == 'reply' else '输入'
                 state = {'started': '处理中', 'success': '成功', 'error': '失败'}.get(r.get('status'), '未知')
                 self.put(5 + i, f"{stamp}  {kind}  {state}  {r.get('duration_ms', '—')} ms", offset + i == self.index)
-        self.put(height - 3, self.message)
+        self.put(block_height - 3, self.message)
         if self.editing is not None:
             hint = 'Enter 保存  Esc 取消  Backspace 删除'
         elif self.detail:
             hint = '↑↓ 滚动  Esc 返回'
         else:
-            hint = 'q 退出界面  s 启停  1/2/3 换页  ↑↓ 选择  Enter 修改'
-        self.put(height - 2, hint)
+            hint = 'q 退出并停止  1/2/3 换页  ↑↓ 选择  Enter 修改'
+        self.put(block_height - 2, hint)
         self.screen.refresh()
 
     def save(self, key, value):
@@ -330,10 +376,6 @@ class Terminal:
         elif key in (curses.KEY_UP, curses.KEY_BTAB):
             count = len(self.fields()) if self.page < 2 else len(self.records)
             self.index = (self.index - 1) % max(1, count)
-        elif key == 's' and not self.busy:
-            self.busy = True
-            self.worker.commands.put('stop' if self.status else 'start')
-            self.message = '正在停止服务…' if self.status else '正在启动服务…'
         elif key in (' ', '\n', '\r', curses.KEY_ENTER):
             if self.page == 2:
                 if self.records:
@@ -386,14 +428,28 @@ def main():
     locale.setlocale(locale.LC_ALL, '')
     worker = ServiceWorker()
     worker.thread.start()
+    previous_signals = {}
+    def interrupted(signum, frame):
+        raise KeyboardInterrupt
+    for signum in (signal.SIGTERM, signal.SIGHUP):
+        previous_signals[signum] = signal.signal(signum, interrupted)
     try:
         curses.wrapper(run, worker)
     except KeyboardInterrupt:
         pass
     finally:
-        worker.stopped.set()
-    print('已退出界面；后台服务保持原状态。停止服务：python3 service.py stop')
-    return 0
+        # Finish Hook cleanup even if another interrupt arrives during shutdown.
+        for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            previous_signals.setdefault(signum, signal.getsignal(signum))
+            signal.signal(signum, signal.SIG_IGN)
+        cleaned = worker.close()
+        for signum, handler in previous_signals.items():
+            signal.signal(signum, handler)
+    if cleaned:
+        print('已退出界面，服务已停止，Hook 已清理。')
+    else:
+        print('已退出界面，但清理失败；请运行 python3 service.py stop。', file=sys.stderr)
+    return 0 if cleaned else 1
 
 
 if __name__ == '__main__':

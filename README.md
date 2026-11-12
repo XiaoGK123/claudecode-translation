@@ -335,9 +335,10 @@ and `start`, `stop`, `status` commands remain available.
 - Use Up/Down or Tab to select a row, Enter/Space to toggle a switch or cycle choices.
 - For editable values, Enter opens an empty replacement field; type the new value,
   Enter saves it, Esc cancels. API keys are masked. Thresholds are shown as percentages.
-- Press `s` to start/stop the background service. Opening the TUI does not itself
-  start a service. Press `q` to leave the interface; the service keeps its current
-  state. Stop it first with `s` if you want Hooks removed on exit.
+- Opening the TUI starts the service automatically (or connects to an existing
+  instance). Press `q` or Ctrl+C to exit: the service stops and its Hooks are
+  removed. There is no separate start/stop key. SIGTERM and SIGHUP also trigger cleanup.
+  A forced kill or power loss still requires `python3 service.py stop` on recovery.
 - Log entries open with Enter, scroll with Up/Down, and close with Esc. Expired
   entries disappear from the list and open detail view. Logs still expire after
   300 seconds and are deleted by the service every 60 seconds.
@@ -355,3 +356,10 @@ Changing provider selects an appropriate API format, but does not guess the
 provider's URL, model or key: edit those fields before using translation. The
 TUI deliberately does not expose Hook timeout or settings-file relocation;
 those existing file settings still require service restart/re-registration.
+
+The TUI centers a block up to 68 terminal columns, aligns labels and values,
+and adds a blank row between settings when height permits. Short terminals use
+compact rows and scroll the selection. Font size belongs to your terminal
+application: increase it in Terminal/iTerm2 settings or use the terminal's zoom
+shortcut (commonly Cmd+Plus on macOS or Ctrl+Shift+Plus on Linux). The TUI does
+not alter terminal-wide font preferences.
