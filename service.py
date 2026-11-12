@@ -74,8 +74,9 @@ def feature_status(config):
         ratio = "配置无效"
     else:
         ratio = f"{threshold * 100:.10f}".rstrip("0").rstrip(".") + "%"
+    guard = "已开启" if config.get("han_ratio_threshold_enabled", True) else "已关闭"
     region = "已开启" if config.get("loc_monitor_enabled", True) else "已关闭"
-    return f"中文提交检查 已开启（汉字比例阈值 {ratio}） | 出口地区监测 {region}"
+    return f"中文提交检查 {guard}（汉字比例阈值 {ratio}） | 出口地区监测 {region}"
 
 
 def fit_status_line(text, columns):
@@ -108,6 +109,17 @@ def refresh_balance(stopped, results, interval):
             interval = 30
         if not stopped.is_set():
             results.put(label)
+
+
+def apply_input_translation(process, enabled):
+    """Reconcile a changed input switch; callers invoke only on transitions."""
+    hotkey.stop(process)
+    if not enabled:
+        return None, "Option+A 已关闭"
+    try:
+        return hotkey.launch(), "Option+A 已启用"
+    except Exception as error:
+        return None, f"Option+A 未启用：{error}"
 
 
 def run():
@@ -162,6 +174,7 @@ def run():
                     prefix += " | Option+A 已启用"
                 except Exception as error:
                     prefix += f" | Option+A 未启用：{error}"
+            input_enabled = config.get("input_translation_enabled", False)
             terminal_line = sys.stdout.isatty()
             switches = feature_status(config)
             last_switch_check = time.monotonic()
@@ -192,7 +205,19 @@ def run():
                 if time.monotonic() - last_switch_check >= 1:
                     last_switch_check = time.monotonic()
                     try:
-                        refreshed_switches = feature_status(configuration())
+                        current = configuration()
+                        refreshed_switches = feature_status(current)
+                        desired_input = current.get("input_translation_enabled", False)
+                        if desired_input != input_enabled:
+                            input_enabled = desired_input
+                            hotkey_process, hotkey_label = apply_input_translation(
+                                hotkey_process, desired_input)
+                            prefix = f"服务运行中 | Hook 已安装 | 模型 {current['model']} | {hotkey_label}"
+                            render(balance)
+                        elif current['model'] != config['model']:
+                            prefix = prefix.replace(f"模型 {config['model']}", f"模型 {current['model']}")
+                            render(balance)
+                        config = current
                     except Exception:
                         refreshed_switches = "功能开关 配置读取失败"
                     if refreshed_switches != switches:
@@ -221,7 +246,9 @@ def run():
                         running = False
                     else:
                         reply = {"running": True, "pid": os.getpid(),
-                                 "settings_file": str(settings)}
+                                 "settings_file": str(settings), "balance": balance,
+                                 "hotkey_running": hotkey_process is not None,
+                                 "features": switches}
                         client.sendall(json.dumps(reply).encode())
                 finally:
                     if client is not stop_client:
@@ -315,9 +342,12 @@ def stop():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", nargs="?", default="run",
-                        choices=("run", "start", "stop", "status", "_run"))
+                        choices=("run", "start", "stop", "status", "_run", "tui"))
     args = parser.parse_args()
     try:
+        if args.action == "tui":
+            from tui import main as tui_main
+            return tui_main()
         if args.action in ("run", "start", "_run"):
             config_path = ROOT / "config.json"
             if not config_path.exists():

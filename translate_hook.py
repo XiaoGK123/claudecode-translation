@@ -21,7 +21,7 @@ def configuration():
         result.update(overrides)
         if "api_provider" not in overrides:
             result["api_provider"] = legacy_provider(result)
-    # Retired switch: prompt checking always uses the Han ratio rule.
+    # Ignore the retired switch; han_ratio_threshold_enabled controls the guard.
     result.pop("prompt_guard_enabled", None)
     return result
 
