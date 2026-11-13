@@ -7,6 +7,7 @@ import locale
 import math
 import os
 import queue
+import random
 import signal
 import subprocess
 import sys
@@ -142,6 +143,69 @@ def wrap(text, width):
     return lines
 
 
+class Starfield:
+    """Animated ASCII night sky drawn behind the panel; pure function of time."""
+    # Far stars barely move; near stars drift left for a little parallax.
+    LAYERS = ((0.0, '..', 'dim'), (0.25, '.+', 'blue'), (0.6, '+*', 'bright'))
+    DENSITY = 1 / 30
+    METEOR_EVERY = (5.0, 11.0)
+    METEOR_SPEED = 28.0
+
+    def __init__(self, seed=None):
+        self.random = random.Random(seed)
+        self.size = None
+        self.stars = []
+        self.meteor = None
+        self.next_meteor = None
+
+    def resize(self, height, width):
+        if self.size == (height, width):
+            return
+        self.size = (height, width)
+        count = int(height * width * self.DENSITY)
+        self.stars = []
+        for _ in range(count):
+            layer = self.random.choices((0, 1, 2), weights=(6, 3, 1))[0]
+            self.stars.append((self.random.randrange(height), self.random.uniform(0, width),
+                               layer, self.random.uniform(0, math.tau),
+                               self.random.uniform(1.5, 5.0),
+                               'warm' if layer and self.random.random() < .15 else None))
+
+    def cells(self, now, height, width):
+        """Yield (y, x, glyph, tone) for every visible cell at time `now`."""
+        self.resize(height, width)
+        for y, x, layer, phase, period, tone in self.stars:
+            speed, glyphs, layer_tone = self.LAYERS[layer]
+            light = (math.sin(now * math.tau / period + phase) + 1) / 2
+            if layer == 0 and light < .3:
+                continue  # Faint stars fade out completely between twinkles.
+            glyph = glyphs[1] if light > .6 else glyphs[0]
+            yield y, int(x - speed * now) % width, glyph, tone or layer_tone
+        yield from self._meteor(now, height, width)
+
+    def _meteor(self, now, height, width):
+        if self.next_meteor is None:
+            self.next_meteor = now + self.random.uniform(*self.METEOR_EVERY) / 3
+        if self.meteor is None and now >= self.next_meteor:
+            self.meteor = (now, self.random.uniform(width * .2, width),
+                           self.random.uniform(0, height * .3),
+                           self.random.uniform(.6, 1.1))
+            self.next_meteor = now + self.random.uniform(*self.METEOR_EVERY)
+        if self.meteor is None:
+            return
+        start, x0, y0, life = self.meteor
+        age = now - start
+        if age > life:
+            self.meteor = None
+            return
+        # Travel down-left at a 2:1 slope so it reads as a diagonal in terminal cells.
+        for i, glyph in enumerate('*=-.'):
+            distance = max(0.0, age * self.METEOR_SPEED - i * 1.5)
+            y, x = int(y0 + distance / 2), int(x0 - distance)
+            if 0 <= y < height and 0 <= x < width:
+                yield y, x, glyph, 'meteor' if i < 2 else 'blue'
+
+
 class ServiceWorker:
     """Run the service for the lifetime of the terminal, including cleanup."""
     def __init__(self):
@@ -215,6 +279,66 @@ class Terminal:
         self.busy = True
         self.last_refresh = 0
         self.valid_config = False
+        self.sky = Starfield()
+        self.palette = {}
+
+    def colors(self):
+        """Map star tones to curses attributes; falls back to plain dim/bold."""
+        base = {'dim': curses.A_DIM, 'blue': curses.A_NORMAL, 'bright': curses.A_BOLD,
+                'warm': curses.A_BOLD, 'meteor': curses.A_BOLD, 'frame': curses.A_DIM}
+        try:
+            if not curses.has_colors():
+                return base
+            curses.start_color()
+            rich = curses.COLORS >= 256
+            # Always paint on true black, whatever the terminal theme's background is.
+            # Colour 16 is #000000 in the 256-colour cube; slot 0 may be themed grey.
+            background = 16 if rich else curses.COLOR_BLACK
+            spec = {'text': (252 if rich else curses.COLOR_WHITE, curses.A_NORMAL),
+                    'dim': (240 if rich else curses.COLOR_WHITE, curses.A_DIM),
+                    'blue': (111 if rich else curses.COLOR_BLUE, curses.A_NORMAL),
+                    'bright': (231 if rich else curses.COLOR_WHITE, curses.A_BOLD),
+                    'warm': (222 if rich else curses.COLOR_YELLOW, curses.A_NORMAL),
+                    'meteor': (159 if rich else curses.COLOR_CYAN, curses.A_BOLD),
+                    'frame': (61 if rich else curses.COLOR_BLUE, curses.A_NORMAL)}
+            for number, (tone, (color, attr)) in enumerate(spec.items(), 1):
+                curses.init_pair(number, color, background)
+                base[tone] = curses.color_pair(number) | attr
+            # Every cell, including panel text and blanks, inherits the black background.
+            self.screen.bkgd(' ', base['text'])
+        except curses.error:
+            pass
+        return base
+
+    def draw_sky(self, height, width, now=None):
+        """Paint stars outside the panel, then a thin frame around it."""
+        palette = self.palette  # Filled by run() once curses is initialised.
+        top, bottom = self.top - 1, self.top + self.block_height - 1
+        left, right = self.left - 2, self.left + self.content_width + 1
+        now = time.monotonic() if now is None else now
+        for y, x, glyph, tone in self.sky.cells(now, height, width):
+            if y >= height - 1 or x >= width - 1 or (top <= y <= bottom and left <= x <= right):
+                continue
+            try:
+                self.screen.addstr(y, x, glyph, palette.get(tone, curses.A_NORMAL))
+            except curses.error:
+                pass
+        if top < 0 or left < 0 or bottom >= height - 1 or right >= width - 1:
+            return
+        frame = palette.get('frame', curses.A_DIM)
+        acs = lambda name, fallback: getattr(curses, name, ord(fallback))
+        try:
+            for x in range(left + 1, right):
+                self.screen.addch(top, x, acs('ACS_HLINE', '-'), frame)
+                self.screen.addch(bottom, x, acs('ACS_HLINE', '-'), frame)
+            for y in range(top + 1, bottom):
+                self.screen.addch(y, left, acs('ACS_VLINE', '|'), frame)
+                self.screen.addch(y, right, acs('ACS_VLINE', '|'), frame)
+            for y, x, name in ((top, left, 'ACS_ULCORNER'), (top, right, 'ACS_URCORNER'),
+                               (bottom, left, 'ACS_LLCORNER'), (bottom, right, 'ACS_LRCORNER')):
+                self.screen.addch(y, x, acs(name, '+'), frame)
+        except curses.error:
+            pass
 
     def put(self, y, text, selected=False):
         height, width = self.screen.getmaxyx()
@@ -272,12 +396,14 @@ class Terminal:
         self.left = max(0, (terminal_width - self.content_width) // 2)
         block_height = min(height - 2, 25)
         self.top = max(0, (height - block_height) // 2)
+        self.block_height = block_height
         width = self.content_width
         if height < 12 or terminal_width < 40:
             self.put(0, '请将终端调整到至少 40 列 × 12 行')
             self.put(1, 'q 退出')
             self.screen.refresh()
             return
+        self.draw_sky(height, terminal_width)
         status = '运行中' if self.status else ('正在启动' if self.busy else '未运行')
         self.put(0, '翻译助手 / ' + status)
         balance = self.status.get('balance') if self.status else None
@@ -408,8 +534,9 @@ def run(screen, worker):
     except curses.error:
         pass
     screen.keypad(True)
-    screen.timeout(100)
+    screen.timeout(100)  # Also the starfield frame rate: about 10 frames per second.
     terminal = Terminal(screen, worker)
+    terminal.palette = terminal.colors()
     while True:
         terminal.refresh()
         terminal.render()

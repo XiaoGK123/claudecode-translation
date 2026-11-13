@@ -357,6 +357,11 @@ provider's URL, model or key: edit those fields before using translation. The
 TUI deliberately does not expose Hook timeout or settings-file relocation;
 those existing file settings still require service restart/re-registration.
 
+The TUI draws an animated ASCII starry sky behind a framed panel: stars twinkle,
+nearer ones drift slowly for parallax, and a shooting star crosses every 5–11
+seconds. It uses 256 colors when the terminal supports them, falling back to 8
+colors or plain dim/bold text. The background is always pure black.
+
 The TUI centers a block up to 68 terminal columns, aligns labels and values,
 and adds a blank row between settings when height permits. Short terminals use
 compact rows and scroll the selection. Font size belongs to your terminal
