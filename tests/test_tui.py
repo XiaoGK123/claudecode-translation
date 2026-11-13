@@ -27,6 +27,10 @@ class Screen:
         self.lines.append(text)
         self.positions.append((y, x, text))
 
+    def addch(self, y, x, char, attr):
+        self.frame = getattr(self, 'frame', [])
+        self.frame.append((y, x))
+
     def refresh(self):
         pass
 
@@ -48,6 +52,8 @@ class TUITests(unittest.TestCase):
                            'han_ratio_threshold': .2, 'hook_timeout_seconds': 30,
                            'api_key': 'private-test-value', 'api_provider': 'deepseek'}
         terminal.valid_config = True
+        # Layout tests check panel text only; the sky has its own tests.
+        terminal.draw_sky = lambda *args: None
         return terminal
 
     def test_atomic_merge_and_private_permissions(self):
@@ -137,6 +143,43 @@ class TUITests(unittest.TestCase):
         labels = [(y, text) for y, _, text in positions if '回复翻译' in text or '显示模式' in text]
         self.assertEqual(labels[1][0] - labels[0][0], 2)
         self.assertFalse(any('s 启停' in text for _, _, text in positions))
+
+    def test_starfield_stays_outside_panel_and_animates(self):
+        terminal = self.terminal()
+        del terminal.draw_sky
+        terminal.sky = tui.Starfield(seed=7)
+        terminal.screen.getmaxyx = lambda: (40, 120)
+        terminal.render()
+        stars = [(y, x) for y, x, text in terminal.screen.positions if len(text) == 1]
+        self.assertGreater(len(stars), 20)
+        top, left = terminal.top, terminal.left
+        for y, x in stars:
+            self.assertFalse(top - 1 <= y <= top + terminal.block_height - 1
+                             and left - 2 <= x <= left + terminal.content_width + 1)
+            self.assertTrue(y < 39 and x < 119)
+        frame = terminal.screen.frame
+        self.assertIn((top - 1, left - 2), frame)
+        self.assertIn((top + terminal.block_height - 1, left + terminal.content_width + 1), frame)
+        sky = tui.Starfield(seed=7)
+        self.assertNotEqual(list(sky.cells(0, 40, 120)), list(sky.cells(2.5, 40, 120)))
+
+    def test_meteor_crosses_then_disappears(self):
+        sky = tui.Starfield(seed=1)
+        sky.stars, sky.size = [], (40, 120)
+        sky.next_meteor = 10
+        self.assertEqual(list(sky.cells(9, 40, 120)), [])
+        trail = list(sky.cells(10.2, 40, 120))
+        self.assertTrue(trail)
+        self.assertTrue({'meteor'} <= {tone for *_, tone in trail})
+        self.assertEqual(list(sky.cells(12, 40, 120)), [])
+
+    def test_starfield_is_always_on_without_any_setting(self):
+        self.assertNotIn('tui_starfield', [key for key, _, _ in tui.COMMON])
+        terminal = tui.Terminal(Screen(), SimpleNamespace(results=queue.SimpleQueue()))
+        terminal.config = {'han_ratio_threshold': .2}
+        terminal.screen.getmaxyx = lambda: (40, 120)
+        terminal.render()
+        self.assertTrue(any(len(text) == 1 for _, _, text in terminal.screen.positions))
 
     def test_log_filtering_and_expiration(self):
         directory = self.root / 'logs'
