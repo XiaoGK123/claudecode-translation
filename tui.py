@@ -145,11 +145,16 @@ def wrap(text, width):
 
 class Starfield:
     """Animated ASCII night sky drawn behind the panel; pure function of time."""
-    # Far stars barely move; near stars drift left for a little parallax.
-    LAYERS = ((0.0, '..', 'dim'), (0.25, '.+', 'blue'), (0.6, '+*', 'bright'))
-    DENSITY = 1 / 30
+    # Four parallax layers: deep dust, distant stars, mid-field stars, and bright foreground stars.
+    LAYERS = (
+        (0.0, '.:', 'faint'),
+        (0.15, '.+', 'dim'),
+        (0.38, '.+*', 'blue'),
+        (0.72, '.+*', 'bright'),
+    )
+    DENSITY = 1 / 20
     METEOR_EVERY = (5.0, 11.0)
-    METEOR_SPEED = 28.0
+    METEOR_SPEED = 30.0
 
     def __init__(self, seed=None):
         self.random = random.Random(seed)
@@ -164,46 +169,118 @@ class Starfield:
         self.size = (height, width)
         count = int(height * width * self.DENSITY)
         self.stars = []
+        tones = ('blue', 'lilac', 'warm', 'rose')
+        tone_weights = (5, 3, 3, 1)
         for _ in range(count):
-            layer = self.random.choices((0, 1, 2), weights=(6, 3, 1))[0]
-            self.stars.append((self.random.randrange(height), self.random.uniform(0, width),
-                               layer, self.random.uniform(0, math.tau),
-                               self.random.uniform(1.5, 5.0),
-                               'warm' if layer and self.random.random() < .15 else None))
+            layer = self.random.choices((0, 1, 2, 3), weights=(5, 4, 3, 1))[0]
+            # Bias a portion of stars toward a diagonal galactic band across the sky.
+            if self.random.random() < 0.38 and height > 2 and width > 2:
+                u = self.random.random()
+                band_y = (1.0 - u) * (height - 1) + self.random.gauss(0, height * 0.14)
+                y = int(band_y) % height
+                x = u * width
+            else:
+                y = self.random.randrange(height)
+                x = self.random.uniform(0, width)
+            tone = (
+                'mist' if layer == 0 and self.random.random() < 0.35 else
+                self.random.choices(tones, weights=tone_weights)[0]
+                if layer and self.random.random() < 0.45 else None
+            )
+            self.stars.append((
+                y, x, layer,
+                self.random.uniform(0, math.tau),
+                self.random.uniform(1.4, 5.2),
+                tone,
+            ))
 
     def cells(self, now, height, width):
         """Yield (y, x, glyph, tone) for every visible cell at time `now`."""
         self.resize(height, width)
-        for y, x, layer, phase, period, tone in self.stars:
+        for y, x, layer, phase, period, custom_tone in self.stars:
             speed, glyphs, layer_tone = self.LAYERS[layer]
-            light = (math.sin(now * math.tau / period + phase) + 1) / 2
-            if layer == 0 and light < .3:
-                continue  # Faint stars fade out completely between twinkles.
-            glyph = glyphs[1] if light > .6 else glyphs[0]
-            yield y, int(x - speed * now) % width, glyph, tone or layer_tone
+            angle = now * math.tau / period + phase
+            # Dual-harmonic wave gives organic atmospheric scintillation.
+            wave = 0.72 * math.sin(angle) + 0.28 * math.sin(angle * 2.3 + phase)
+            light = max(0.0, min(1.0, (wave + 1.0) / 2.0))
+            if layer == 0 and light < 0.28:
+                continue  # Faint background dust fades completely between twinkles.
+            if layer == 1 and light < 0.14:
+                continue
+            cx = int(x - speed * now) % width
+            base_tone = custom_tone or layer_tone
+            if len(glyphs) == 2:
+                glyph = glyphs[1] if light > 0.72 else glyphs[0]
+            else:
+                glyph = glyphs[2] if light > 0.78 else (glyphs[1] if light > 0.42 else glyphs[0])
+            if light < 0.32:
+                tone = 'faint' if layer <= 1 else 'dim'
+            elif light > 0.86 and layer >= 2:
+                tone = 'bright'
+            else:
+                tone = base_tone
+            yield y, cx, glyph, tone
+            # Bright foreground stars emit a subtle horizontal diffraction glint at peak brightness.
+            if layer == 3 and light > 0.9:
+                glint_tone = custom_tone or 'blue'
+                for dx in (-1, 1):
+                    gx = cx + dx
+                    if 0 <= gx < width:
+                        yield y, gx, '.', glint_tone
         yield from self._meteor(now, height, width)
 
     def _meteor(self, now, height, width):
         if self.next_meteor is None:
             self.next_meteor = now + self.random.uniform(*self.METEOR_EVERY) / 3
         if self.meteor is None and now >= self.next_meteor:
-            self.meteor = (now, self.random.uniform(width * .2, width),
-                           self.random.uniform(0, height * .3),
-                           self.random.uniform(.6, 1.1))
+            self.meteor = (
+                now,
+                self.random.uniform(width * 0.25, width * 0.95),
+                self.random.uniform(0, height * 0.32),
+                self.random.uniform(0.65, 1.15),
+                self.random.uniform(0.42, 0.56),
+                self.random.uniform(0.9, 1.15),
+            )
             self.next_meteor = now + self.random.uniform(*self.METEOR_EVERY)
         if self.meteor is None:
             return
-        start, x0, y0, life = self.meteor
+        start, x0, y0, life, slope, speed_scale = self.meteor
         age = now - start
         if age > life:
             self.meteor = None
             return
-        # Travel down-left at a 2:1 slope so it reads as a diagonal in terminal cells.
-        for i, glyph in enumerate('*=-.'):
-            distance = max(0.0, age * self.METEOR_SPEED - i * 1.5)
-            y, x = int(y0 + distance / 2), int(x0 - distance)
-            if 0 <= y < height and 0 <= x < width:
-                yield y, x, glyph, 'meteor' if i < 2 else 'blue'
+        progress = age / life
+        speed = self.METEOR_SPEED * speed_scale
+        head_dist = age * speed
+        # Grow trail on entry and contract into cooling embers as it burns out.
+        fade = max(0.25, (1.0 - progress) / 0.3) if progress > 0.7 else 1.0
+        trail_len = min(head_dist, 9.5 * fade)
+        steps = max(1, int(trail_len * 2) + 1)
+        drawn = {}
+        # Sample from tail to head so the brighter head always overwrites trailing cells.
+        for step in range(steps, -1, -1):
+            offset = trail_len * (step / steps)
+            dist = max(0.0, head_dist - offset)
+            y, x = int(y0 + dist * slope), int(x0 - dist)
+            if not (0 <= y < height and 0 <= x < width):
+                continue
+            ratio = offset / max(1.0, trail_len)
+            if progress > 0.82:
+                glyph = '+' if step == 0 else ('.' if ratio > 0.45 else '-')
+                tone = 'ember' if step == 0 else ('mist' if ratio < 0.5 else 'faint')
+            elif step == 0 or offset < 0.6:
+                glyph, tone = '*', 'meteor'
+            elif ratio < 0.28:
+                glyph, tone = '=', 'meteor' if ratio < 0.14 else 'ember'
+            elif ratio < 0.58:
+                glyph, tone = '-', 'blue'
+            elif ratio < 0.82:
+                glyph, tone = '~', 'mist'
+            else:
+                glyph, tone = '.', 'faint'
+            drawn[(y, x)] = (glyph, tone)
+        for (y, x), (glyph, tone) in drawn.items():
+            yield y, x, glyph, tone
 
 
 class ServiceWorker:
@@ -284,8 +361,10 @@ class Terminal:
 
     def colors(self):
         """Map star tones to curses attributes; falls back to plain dim/bold."""
-        base = {'dim': curses.A_DIM, 'blue': curses.A_NORMAL, 'bright': curses.A_BOLD,
-                'warm': curses.A_BOLD, 'meteor': curses.A_BOLD, 'frame': curses.A_DIM}
+        base = {'faint': curses.A_DIM, 'dim': curses.A_DIM, 'mist': curses.A_DIM,
+                'blue': curses.A_NORMAL, 'lilac': curses.A_NORMAL, 'ember': curses.A_NORMAL,
+                'bright': curses.A_BOLD, 'warm': curses.A_BOLD, 'rose': curses.A_BOLD,
+                'meteor': curses.A_BOLD, 'frame': curses.A_DIM}
         try:
             if not curses.has_colors():
                 return base
@@ -295,10 +374,15 @@ class Terminal:
             # Colour 16 is #000000 in the 256-colour cube; slot 0 may be themed grey.
             background = 16 if rich else curses.COLOR_BLACK
             spec = {'text': (252 if rich else curses.COLOR_WHITE, curses.A_NORMAL),
-                    'dim': (240 if rich else curses.COLOR_WHITE, curses.A_DIM),
+                    'faint': (237 if rich else curses.COLOR_WHITE, curses.A_DIM),
+                    'dim': (242 if rich else curses.COLOR_WHITE, curses.A_DIM),
+                    'mist': (60 if rich else curses.COLOR_BLUE, curses.A_DIM),
                     'blue': (111 if rich else curses.COLOR_BLUE, curses.A_NORMAL),
+                    'lilac': (147 if rich else curses.COLOR_MAGENTA, curses.A_NORMAL),
+                    'ember': (117 if rich else curses.COLOR_CYAN, curses.A_NORMAL),
                     'bright': (231 if rich else curses.COLOR_WHITE, curses.A_BOLD),
                     'warm': (222 if rich else curses.COLOR_YELLOW, curses.A_NORMAL),
+                    'rose': (217 if rich else curses.COLOR_RED, curses.A_NORMAL),
                     'meteor': (159 if rich else curses.COLOR_CYAN, curses.A_BOLD),
                     'frame': (61 if rich else curses.COLOR_BLUE, curses.A_NORMAL)}
             for number, (tone, (color, attr)) in enumerate(spec.items(), 1):
@@ -317,7 +401,8 @@ class Terminal:
         left, right = self.left - 2, self.left + self.content_width + 1
         now = time.monotonic() if now is None else now
         for y, x, glyph, tone in self.sky.cells(now, height, width):
-            if y >= height - 1 or x >= width - 1 or (top <= y <= bottom and left <= x <= right):
+            if (y < 0 or x < 0 or y >= height - 1 or x >= width - 1
+                    or (top <= y <= bottom and left <= x <= right)):
                 continue
             try:
                 self.screen.addstr(y, x, glyph, palette.get(tone, curses.A_NORMAL))
@@ -534,7 +619,7 @@ def run(screen, worker):
     except curses.error:
         pass
     screen.keypad(True)
-    screen.timeout(100)  # Also the starfield frame rate: about 10 frames per second.
+    screen.timeout(50)  # Also the starfield frame rate: about 20 frames per second.
     terminal = Terminal(screen, worker)
     terminal.palette = terminal.colors()
     while True:

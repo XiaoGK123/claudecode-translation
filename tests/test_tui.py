@@ -168,9 +168,14 @@ class TUITests(unittest.TestCase):
         sky.stars, sky.size = [], (40, 120)
         sky.next_meteor = 10
         self.assertEqual(list(sky.cells(9, 40, 120)), [])
+        # At birth, the blazing head must not be overwritten by its own tail.
+        birth = list(sky.cells(10.01, 40, 120))
+        self.assertTrue(birth)
+        self.assertEqual(birth[-1][2:], ('*', 'meteor'))
         trail = list(sky.cells(10.2, 40, 120))
         self.assertTrue(trail)
         self.assertTrue({'meteor'} <= {tone for *_, tone in trail})
+        self.assertEqual(len(trail), len({(y, x) for y, x, *_ in trail}))
         self.assertEqual(list(sky.cells(12, 40, 120)), [])
 
     def test_starfield_is_always_on_without_any_setting(self):
